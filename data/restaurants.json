@@ -1,0 +1,563 @@
+[
+  {
+    "id": "rest_001",
+    "name": "Noi's Thai Kitchen",
+    "google_place_id": "ChIJ_mock_001",
+    "cuisine": "Thai",
+    "price_level": "$",
+    "region": "Lahaina",
+    "rating": 4.6,
+    "features": {
+      "outdoor_seating": true,
+      "good_for_groups": true,
+      "reservations": false,
+      "takeout": true,
+      "delivery": false,
+      "wheelchair_accessible": true
+    },
+    "highlights": "Authentic Bangkok street food, plastic tables, loud and bustling",
+    "details": "Family-run spot serving real-deal Thai street food. No frills, just incredible pad thai and green curry.",
+    "editorial_summary": "The closest you'll get to Bangkok in Maui",
+    "vibe": {
+      "formality": "very_casual",
+      "noise_level": "loud",
+      "atmosphere_tags": ["hole-in-the-wall", "authentic", "local-favorite", "no-frills"],
+      "best_for": ["quick lunch", "casual dinner", "groups"],
+      "vibe_summary": "Bustling, no-frills Thai spot with plastic outdoor seating and authentic Bangkok night market energy. Loud, casual, and unapologetically real."
+    }
+  },
+  {
+    "id": "rest_002",
+    "name": "Mama's Fish House",
+    "google_place_id": "ChIJ_mock_002",
+    "cuisine": "Hawaiian-Seafood",
+    "price_level": "$$$$",
+    "region": "Paia",
+    "rating": 4.8,
+    "features": {
+      "outdoor_seating": true,
+      "good_for_groups": true,
+      "reservations": true,
+      "takeout": false,
+      "delivery": false,
+      "wheelchair_accessible": true,
+      "ocean_view": true
+    },
+    "highlights": "Iconic oceanfront dining, fresh catch daily, special occasion destination",
+    "details": "Legendary Maui institution since 1973. Each dish lists the fisherman who caught it. Tiki-elegant atmosphere with toes-in-sand romance.",
+    "editorial_summary": "The most famous restaurant in Hawaii for a reason",
+    "vibe": {
+      "formality": "upscale",
+      "noise_level": "moderate",
+      "atmosphere_tags": ["romantic", "special-occasion", "iconic", "oceanfront", "tiki-elegant"],
+      "best_for": ["date night", "anniversary", "special occasion", "visitors"],
+      "vibe_summary": "Iconic oceanfront fine dining with tiki-elegant decor. Romantic, special-occasion energy where you can feel the sand between your toes while dining on the freshest catch in Hawaii."
+    }
+  },
+  {
+    "id": "rest_003",
+    "name": "Tin Roof Maui",
+    "google_place_id": "ChIJ_mock_003",
+    "cuisine": "Hawaiian-Fusion",
+    "price_level": "$$",
+    "region": "Kahului",
+    "rating": 4.5,
+    "features": {
+      "outdoor_seating": false,
+      "good_for_groups": false,
+      "reservations": false,
+      "takeout": true,
+      "delivery": false,
+      "wheelchair_accessible": true
+    },
+    "highlights": "Chef Sheldon Simeon's casual counter-service spot, poke bowls, local plates",
+    "details": "Top Chef finalist's takeout window serving elevated local comfort food. Line out the door but worth the wait.",
+    "editorial_summary": "Celebrity chef quality at plate lunch prices",
+    "vibe": {
+      "formality": "very_casual",
+      "noise_level": "moderate",
+      "atmosphere_tags": ["counter-service", "local-favorite", "chef-driven", "quick-service"],
+      "best_for": ["quick lunch", "takeout", "solo", "foodies"],
+      "vibe_summary": "No-frills counter-service spot from a Top Chef finalist. Grab-and-go energy with serious culinary chops. Expect a line but the mochiko chicken is worth it."
+    }
+  },
+  {
+    "id": "rest_004",
+    "name": "Merriman's Kapalua",
+    "google_place_id": "ChIJ_mock_004",
+    "cuisine": "Hawaiian-Regional",
+    "price_level": "$$$",
+    "region": "Kapalua",
+    "rating": 4.6,
+    "features": {
+      "outdoor_seating": true,
+      "good_for_groups": true,
+      "reservations": true,
+      "takeout": false,
+      "delivery": false,
+      "wheelchair_accessible": true,
+      "ocean_view": true,
+      "sunset_view": true
+    },
+    "highlights": "Farm-to-table pioneer, stunning sunset views, sophisticated island cuisine",
+    "details": "Peter Merriman helped define Hawaii Regional Cuisine. Elegant but not stuffy, with jaw-dropping Kapalua Bay views.",
+    "editorial_summary": "Where farm-to-table meets ocean views",
+    "vibe": {
+      "formality": "smart_casual",
+      "noise_level": "moderate",
+      "atmosphere_tags": ["farm-to-table", "sunset-views", "sophisticated", "island-elegant"],
+      "best_for": ["date night", "business dinner", "special occasion", "sunset drinks"],
+      "vibe_summary": "Sophisticated farm-to-table dining with spectacular Kapalua Bay sunset views. Elevated but approachable—dress nice but leave the jacket at home."
+    }
+  },
+  {
+    "id": "rest_005",
+    "name": "Da Kitchen",
+    "google_place_id": "ChIJ_mock_005",
+    "cuisine": "Hawaiian-Local",
+    "price_level": "$",
+    "region": "Kihei",
+    "rating": 4.4,
+    "features": {
+      "outdoor_seating": true,
+      "good_for_groups": true,
+      "reservations": false,
+      "takeout": true,
+      "delivery": true,
+      "wheelchair_accessible": true
+    },
+    "highlights": "Massive plate lunches, loco moco, local comfort food",
+    "details": "The quintessential Hawaiian plate lunch experience. Portions are enormous. Come hungry, leave happy.",
+    "editorial_summary": "Authentic Hawaiian comfort food in massive portions",
+    "vibe": {
+      "formality": "very_casual",
+      "noise_level": "lively",
+      "atmosphere_tags": ["local-favorite", "family-friendly", "generous-portions", "comfort-food"],
+      "best_for": ["family lunch", "hungry travelers", "groups", "budget-friendly"],
+      "vibe_summary": "Classic Hawaiian plate lunch joint with portions that could feed a family. Loud, friendly, and totally unpretentious. The loco moco is legendary."
+    }
+  },
+  {
+    "id": "rest_006",
+    "name": "Lahaina Grill",
+    "google_place_id": "ChIJ_mock_006",
+    "cuisine": "New American",
+    "price_level": "$$$$",
+    "region": "Lahaina",
+    "rating": 4.7,
+    "features": {
+      "outdoor_seating": false,
+      "good_for_groups": true,
+      "reservations": true,
+      "takeout": false,
+      "delivery": false,
+      "wheelchair_accessible": true,
+      "full_bar": true
+    },
+    "highlights": "Award-winning fine dining, sophisticated atmosphere, impeccable service",
+    "details": "Consistently rated Maui's best restaurant. White tablecloths, extensive wine list, and dishes that are works of art.",
+    "editorial_summary": "Maui's most acclaimed fine dining experience",
+    "vibe": {
+      "formality": "fine_dining",
+      "noise_level": "quiet",
+      "atmosphere_tags": ["fine-dining", "romantic", "award-winning", "sophisticated"],
+      "best_for": ["anniversary", "special occasion", "date night", "foodies"],
+      "vibe_summary": "White-tablecloth fine dining at its best. Hushed, romantic atmosphere with impeccable service. This is where you go when you want to feel fancy."
+    }
+  },
+  {
+    "id": "rest_007",
+    "name": "Paia Fish Market",
+    "google_place_id": "ChIJ_mock_007",
+    "cuisine": "Seafood",
+    "price_level": "$$",
+    "region": "Paia",
+    "rating": 4.3,
+    "features": {
+      "outdoor_seating": true,
+      "good_for_groups": true,
+      "reservations": false,
+      "takeout": true,
+      "delivery": false,
+      "wheelchair_accessible": true
+    },
+    "highlights": "Fresh fish tacos, casual beach town vibe, surfer hangout",
+    "details": "Order at the counter, grab a picnic table, and enjoy the freshest fish tacos on the island. Surfers, tourists, and locals all mix here.",
+    "editorial_summary": "The perfect post-beach fish taco spot",
+    "vibe": {
+      "formality": "very_casual",
+      "noise_level": "lively",
+      "atmosphere_tags": ["beach-casual", "surfer-vibe", "counter-service", "laid-back"],
+      "best_for": ["post-beach", "casual lunch", "families", "groups"],
+      "vibe_summary": "Quintessential beach town fish market with picnic table seating. Sandy feet welcome. The fish tacos are legendary and the vibe is pure aloha."
+    }
+  },
+  {
+    "id": "rest_008",
+    "name": "Sansei Seafood",
+    "google_place_id": "ChIJ_mock_008",
+    "cuisine": "Japanese-Fusion",
+    "price_level": "$$$",
+    "region": "Kapalua",
+    "rating": 4.5,
+    "features": {
+      "outdoor_seating": false,
+      "good_for_groups": true,
+      "reservations": true,
+      "takeout": true,
+      "delivery": false,
+      "wheelchair_accessible": true,
+      "full_bar": true,
+      "late_night": true
+    },
+    "highlights": "Award-winning sushi, creative rolls, late-night happy hour",
+    "details": "Inventive Japanese-fusion that's been winning awards for decades. The late-night 50% off sushi deal is legendary.",
+    "editorial_summary": "Creative sushi with a cult-following late-night scene",
+    "vibe": {
+      "formality": "casual",
+      "noise_level": "lively",
+      "atmosphere_tags": ["trendy", "creative", "late-night", "social"],
+      "best_for": ["date night", "groups", "late-night", "foodies"],
+      "vibe_summary": "Buzzy Japanese-fusion spot known for creative rolls and an epic late-night happy hour. Social, fun atmosphere that gets lively after 10pm."
+    }
+  },
+  {
+    "id": "rest_009",
+    "name": "Kula Lodge",
+    "google_place_id": "ChIJ_mock_009",
+    "cuisine": "American",
+    "price_level": "$$",
+    "region": "Upcountry",
+    "rating": 4.2,
+    "features": {
+      "outdoor_seating": true,
+      "good_for_groups": true,
+      "reservations": true,
+      "takeout": false,
+      "delivery": false,
+      "wheelchair_accessible": true,
+      "mountain_view": true,
+      "fireplace": true
+    },
+    "highlights": "Stunning upcountry views, cozy mountain lodge, breakfast destination",
+    "details": "Perched on the slopes of Haleakala with panoramic views. Cozy lodge atmosphere with a fireplace. Famous for breakfast.",
+    "editorial_summary": "Mountain lodge charm with views for days",
+    "vibe": {
+      "formality": "casual",
+      "noise_level": "quiet",
+      "atmosphere_tags": ["cozy", "scenic", "mountain-lodge", "romantic"],
+      "best_for": ["breakfast", "brunch", "couples", "scenic dining"],
+      "vibe_summary": "Cozy mountain lodge with fireplace and sweeping upcountry views. Peaceful, romantic escape from the beach crowds. Perfect for a lazy breakfast."
+    }
+  },
+  {
+    "id": "rest_010",
+    "name": "Star Noodle",
+    "google_place_id": "ChIJ_mock_010",
+    "cuisine": "Asian-Fusion",
+    "price_level": "$$",
+    "region": "Lahaina",
+    "rating": 4.5,
+    "features": {
+      "outdoor_seating": false,
+      "good_for_groups": true,
+      "reservations": true,
+      "takeout": true,
+      "delivery": false,
+      "wheelchair_accessible": true,
+      "shared_plates": true
+    },
+    "highlights": "Shareable Asian plates, craft cocktails, industrial-chic space",
+    "details": "From the Merriman's team, a modern take on Asian comfort food. Order lots of small plates and share everything.",
+    "editorial_summary": "Hip Asian fusion with a share-everything philosophy",
+    "vibe": {
+      "formality": "casual",
+      "noise_level": "lively",
+      "atmosphere_tags": ["trendy", "industrial-chic", "communal", "hip"],
+      "best_for": ["date night", "groups", "foodies", "craft cocktails"],
+      "vibe_summary": "Industrial-chic space with communal tables and a share-everything menu. Trendy, social atmosphere perfect for adventurous eaters who like to try a bit of everything."
+    }
+  },
+  {
+    "id": "rest_011",
+    "name": "Leoda's Kitchen",
+    "google_place_id": "ChIJ_mock_011",
+    "cuisine": "American-Comfort",
+    "price_level": "$",
+    "region": "Olowalu",
+    "rating": 4.4,
+    "features": {
+      "outdoor_seating": true,
+      "good_for_groups": true,
+      "reservations": false,
+      "takeout": true,
+      "delivery": false,
+      "wheelchair_accessible": true
+    },
+    "highlights": "Famous pies, comfort food, roadside charm",
+    "details": "Roadside pie shop and kitchen between Lahaina and Maalaea. The banana cream pie is life-changing. Great lunch stop.",
+    "editorial_summary": "Roadside gem famous for life-changing pies",
+    "vibe": {
+      "formality": "very_casual",
+      "noise_level": "moderate",
+      "atmosphere_tags": ["roadside", "charming", "family-friendly", "homestyle"],
+      "best_for": ["road trip stop", "pie lovers", "families", "casual lunch"],
+      "vibe_summary": "Charming roadside kitchen with counter service and picnic tables. Come for the comfort food, stay for the legendary pies. Perfect pit stop between adventures."
+    }
+  },
+  {
+    "id": "rest_012",
+    "name": "Monkeypod Kitchen",
+    "google_place_id": "ChIJ_mock_012",
+    "cuisine": "Hawaiian-American",
+    "price_level": "$$",
+    "region": "Wailea",
+    "rating": 4.4,
+    "features": {
+      "outdoor_seating": true,
+      "good_for_groups": true,
+      "reservations": true,
+      "takeout": true,
+      "delivery": false,
+      "wheelchair_accessible": true,
+      "full_bar": true,
+      "live_music": true
+    },
+    "highlights": "Craft cocktails, live music, cream pies, lively atmosphere",
+    "details": "Peter Merriman's casual concept. Great happy hour, live music most nights, and those famous cream pies.",
+    "editorial_summary": "Where farm-to-table meets island party vibes",
+    "vibe": {
+      "formality": "casual",
+      "noise_level": "loud",
+      "atmosphere_tags": ["lively", "social", "live-music", "party-vibe"],
+      "best_for": ["happy hour", "groups", "live music", "casual dinner"],
+      "vibe_summary": "Buzzy, social restaurant with live music and a party atmosphere. Great for groups who want good food without taking themselves too seriously. Happy hour is legendary."
+    }
+  },
+  {
+    "id": "rest_013",
+    "name": "Hana Ranch Restaurant",
+    "google_place_id": "ChIJ_mock_013",
+    "cuisine": "Hawaiian-Ranch",
+    "price_level": "$$",
+    "region": "Hana",
+    "rating": 4.1,
+    "features": {
+      "outdoor_seating": true,
+      "good_for_groups": true,
+      "reservations": false,
+      "takeout": true,
+      "delivery": false,
+      "wheelchair_accessible": true
+    },
+    "highlights": "Only sit-down restaurant in Hana, ranch-raised beef, remote paradise",
+    "details": "At the end of the Road to Hana, this is your reward. Simple, honest food in one of the most remote spots in Hawaii.",
+    "editorial_summary": "Your delicious reward at the end of the Road to Hana",
+    "vibe": {
+      "formality": "very_casual",
+      "noise_level": "quiet",
+      "atmosphere_tags": ["remote", "peaceful", "authentic", "end-of-the-road"],
+      "best_for": ["road to hana trip", "adventure seekers", "couples", "nature lovers"],
+      "vibe_summary": "Remote, peaceful restaurant at the end of the Road to Hana. Simple ranch food in a setting that feels like the edge of the world. Pure, unhurried aloha."
+    }
+  },
+  {
+    "id": "rest_014",
+    "name": "Cafe Des Amis",
+    "google_place_id": "ChIJ_mock_014",
+    "cuisine": "Mediterranean-Indian",
+    "price_level": "$",
+    "region": "Paia",
+    "rating": 4.3,
+    "features": {
+      "outdoor_seating": true,
+      "good_for_groups": false,
+      "reservations": false,
+      "takeout": true,
+      "delivery": false,
+      "wheelchair_accessible": true,
+      "vegetarian_friendly": true
+    },
+    "highlights": "Crepes, curries, bohemian Paia vibe, great for vegetarians",
+    "details": "Eclectic Mediterranean-Indian spot in the heart of bohemian Paia. Excellent vegetarian options and people-watching.",
+    "editorial_summary": "Bohemian crepes and curries in hippie-chic Paia",
+    "vibe": {
+      "formality": "very_casual",
+      "noise_level": "moderate",
+      "atmosphere_tags": ["bohemian", "eclectic", "paia-vibe", "vegetarian-friendly"],
+      "best_for": ["breakfast", "vegetarians", "solo", "people-watching"],
+      "vibe_summary": "Bohemian cafe with sidewalk seating in the heart of hippie Paia. Eclectic menu, great for vegetarians, and perfect for watching the colorful Paia scene go by."
+    }
+  },
+  {
+    "id": "rest_015",
+    "name": "Ferraro's Bar e Ristorante",
+    "google_place_id": "ChIJ_mock_015",
+    "cuisine": "Italian",
+    "price_level": "$$$$",
+    "region": "Wailea",
+    "rating": 4.6,
+    "features": {
+      "outdoor_seating": true,
+      "good_for_groups": true,
+      "reservations": true,
+      "takeout": false,
+      "delivery": false,
+      "wheelchair_accessible": true,
+      "ocean_view": true,
+      "sunset_view": true,
+      "full_bar": true
+    },
+    "highlights": "Oceanfront Italian, Four Seasons elegance, sunset views",
+    "details": "Four Seasons restaurant right on the beach. Impeccable Italian cuisine with your toes practically in the sand. Ultimate romantic splurge.",
+    "editorial_summary": "Four Seasons elegance meets beachfront Italian",
+    "vibe": {
+      "formality": "upscale",
+      "noise_level": "moderate",
+      "atmosphere_tags": ["romantic", "luxurious", "beachfront", "elegant"],
+      "best_for": ["anniversary", "honeymoon", "special occasion", "sunset dinner"],
+      "vibe_summary": "Beachfront Italian elegance at the Four Seasons. White tablecloths meet sandy toes. The ultimate romantic sunset dinner—splurge-worthy in every way."
+    }
+  },
+  {
+    "id": "rest_016",
+    "name": "Coconut's Fish Cafe",
+    "google_place_id": "ChIJ_mock_016",
+    "cuisine": "Seafood",
+    "price_level": "$",
+    "region": "Kihei",
+    "rating": 4.5,
+    "features": {
+      "outdoor_seating": true,
+      "good_for_groups": true,
+      "reservations": false,
+      "takeout": true,
+      "delivery": false,
+      "wheelchair_accessible": true
+    },
+    "highlights": "Best fish tacos in Kihei, casual counter service, local favorite",
+    "details": "Tiny counter-service spot with a cult following. The fish tacos are perfectly simple and perfectly delicious.",
+    "editorial_summary": "No-frills fish tacos that locals swear by",
+    "vibe": {
+      "formality": "very_casual",
+      "noise_level": "moderate",
+      "atmosphere_tags": ["counter-service", "local-favorite", "no-frills", "beach-casual"],
+      "best_for": ["quick lunch", "post-beach", "budget-friendly", "solo"],
+      "vibe_summary": "Tiny, no-frills fish taco spot that locals fiercely protect. Counter service, plastic forks, and some of the best fish tacos on the island. No pretense, just perfection."
+    }
+  },
+  {
+    "id": "rest_017",
+    "name": "Mala Ocean Tavern",
+    "google_place_id": "ChIJ_mock_017",
+    "cuisine": "Pacific-Rim",
+    "price_level": "$$$",
+    "region": "Lahaina",
+    "rating": 4.4,
+    "features": {
+      "outdoor_seating": true,
+      "good_for_groups": true,
+      "reservations": true,
+      "takeout": false,
+      "delivery": false,
+      "wheelchair_accessible": true,
+      "ocean_view": true,
+      "full_bar": true
+    },
+    "highlights": "Oceanfront dining, sustainable seafood, great brunch",
+    "details": "Casual-upscale spot right on the water. Known for sustainable practices and a killer weekend brunch with ocean views.",
+    "editorial_summary": "Sustainable seafood with waves crashing below",
+    "vibe": {
+      "formality": "smart_casual",
+      "noise_level": "moderate",
+      "atmosphere_tags": ["oceanfront", "sustainable", "relaxed-upscale", "brunch-spot"],
+      "best_for": ["brunch", "date night", "sunset dinner", "seafood lovers"],
+      "vibe_summary": "Relaxed oceanfront spot where you can hear the waves while you eat. Upscale but not stuffy, with a strong commitment to sustainability. Brunch here is magic."
+    }
+  },
+  {
+    "id": "rest_018",
+    "name": "Tasty Crust",
+    "google_place_id": "ChIJ_mock_018",
+    "cuisine": "Hawaiian-Diner",
+    "price_level": "$",
+    "region": "Wailuku",
+    "rating": 4.2,
+    "features": {
+      "outdoor_seating": false,
+      "good_for_groups": true,
+      "reservations": false,
+      "takeout": true,
+      "delivery": false,
+      "wheelchair_accessible": true
+    },
+    "highlights": "Old-school diner, famous pancakes, local institution since 1944",
+    "details": "Time-capsule diner that's been serving locals since 1944. The pancakes are legendary. Cash only, no frills, pure nostalgia.",
+    "editorial_summary": "Step back in time at this 1944 pancake institution",
+    "vibe": {
+      "formality": "very_casual",
+      "noise_level": "moderate",
+      "atmosphere_tags": ["retro", "nostalgic", "local-institution", "diner"],
+      "best_for": ["breakfast", "nostalgia seekers", "budget-friendly", "solo"],
+      "vibe_summary": "Time-warp diner unchanged since 1944. Formica counters, local regulars, and pancakes that justify the hype. Cash only, attitude optional, authenticity guaranteed."
+    }
+  },
+  {
+    "id": "rest_019",
+    "name": "Spago Maui",
+    "google_place_id": "ChIJ_mock_019",
+    "cuisine": "California-Hawaiian",
+    "price_level": "$$$$",
+    "region": "Wailea",
+    "rating": 4.5,
+    "features": {
+      "outdoor_seating": true,
+      "good_for_groups": true,
+      "reservations": true,
+      "takeout": false,
+      "delivery": false,
+      "wheelchair_accessible": true,
+      "ocean_view": true,
+      "sunset_view": true,
+      "full_bar": true
+    },
+    "highlights": "Wolfgang Puck's Maui outpost, celebrity chef dining, stunning views",
+    "details": "Wolfgang Puck brings his California-Hawaiian fusion to the Four Seasons. Impeccable food, celebrity sightings possible, views that never get old.",
+    "editorial_summary": "Wolfgang Puck's island paradise",
+    "vibe": {
+      "formality": "upscale",
+      "noise_level": "moderate",
+      "atmosphere_tags": ["celebrity-chef", "luxurious", "see-and-be-seen", "sophisticated"],
+      "best_for": ["special occasion", "foodies", "celebrity spotting", "sunset dinner"],
+      "vibe_summary": "Wolfgang Puck's glamorous Maui outpost at the Four Seasons. Sophisticated, see-and-be-seen energy with food that lives up to the celebrity chef hype."
+    }
+  },
+  {
+    "id": "rest_020",
+    "name": "Ululani's Hawaiian Shave Ice",
+    "google_place_id": "ChIJ_mock_020",
+    "cuisine": "Dessert",
+    "price_level": "$",
+    "region": "Lahaina",
+    "rating": 4.8,
+    "features": {
+      "outdoor_seating": true,
+      "good_for_groups": true,
+      "reservations": false,
+      "takeout": true,
+      "delivery": false,
+      "wheelchair_accessible": true
+    },
+    "highlights": "Award-winning shave ice, homemade syrups, perfect on a hot day",
+    "details": "Not just any shave ice—this is the shave ice. Homemade syrups, perfect texture, and flavors that will ruin you for all other shave ice forever.",
+    "editorial_summary": "The shave ice that will ruin all other shave ice for you",
+    "vibe": {
+      "formality": "very_casual",
+      "noise_level": "lively",
+      "atmosphere_tags": ["family-friendly", "iconic", "refreshing", "must-try"],
+      "best_for": ["families", "hot days", "dessert", "instagram"],
+      "vibe_summary": "The most famous shave ice in Hawaii, and it earns every bit of hype. Colorful, fun, and absolutely essential on a hot Maui day. Expect a line—it moves fast."
+    }
+  }
+]
+
