@@ -14,6 +14,10 @@ chroma_db/
 *.csv
 *.db
 
+# Backup files (may contain API keys)
+*.backup
+*backup*
+
 # IDE
 .vscode/
 .idea/
@@ -30,3 +34,16 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.env
+secrets.json
+config.json
+
+# API Keys and sensitive data
+*api*key*
+*secret*
+*password*
