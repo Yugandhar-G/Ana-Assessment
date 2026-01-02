@@ -890,7 +890,6 @@ async def search_with_fallbacks(self, query: str) -> AnaResponse:
 - [ ] User feedback integration
 - [ ] A/B testing framework
 - [ ] Geographic expansion
-- [ ] Part 2: Video-to-Plate integration
 
 ---
 

@@ -6,29 +6,27 @@ __pycache__/
 .Python
 venv/
 env/
-.venv/
+ENV/
+.venv
 
-# Environment
-.env
-.env.local
+# Data
+chroma_db/
+*.csv
+*.db
 
 # IDE
-.idea/
 .vscode/
+.idea/
 *.swp
 *.swo
+*~
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Build
-dist/
-build/
-*.egg-info/
-
-# Misc
+# OS
 .DS_Store
-*.log
+Thumbs.db
 
+# Ollama
+.ollama/
+
+# Logs
+*.log
