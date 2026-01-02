@@ -213,12 +213,32 @@ class HardFilter:
                 # Skip location filtering for island-level queries - all restaurants are on Maui
                 pass
             else:
-                # For specific locations (cities, regions), apply filtering
+                # For specific locations (cities, regions), apply filtering BUT be more lenient
+                # Only filter if location is explicitly important (e.g., "in Lahaina" vs "Maui")
                 region_match = query_loc in restaurant.region.lower() if restaurant.region else False
                 city = getattr(restaurant, "city", None)
                 city_match = query_loc in city.lower() if city else False
+                
+                # Check if location is explicitly mentioned in query (more strict filtering)
+                # vs just inferred (more lenient filtering)
+                query_lower = parsed_query.raw_query.lower()
+                location_explicitly_mentioned = (
+                    f"in {query_loc}" in query_lower or
+                    f"at {query_loc}" in query_lower or
+                    f"{query_loc} restaurant" in query_lower or
+                    f"restaurant in {query_loc}" in query_lower
+                )
+                
+                # Only filter out if location is explicitly mentioned AND no match
+                # For general queries (e.g., "what desserts are famous in Maui"), be lenient
                 if not (region_match or city_match):
-                    return False
+                    if location_explicitly_mentioned:
+                        # Location explicitly requested - filter strictly
+                        return False
+                    else:
+                        # Location inferred but not explicit - be lenient, don't filter
+                        # This allows showing related restaurants from nearby areas
+                        pass
         
         return True
 

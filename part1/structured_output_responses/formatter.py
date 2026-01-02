@@ -4,6 +4,69 @@ import os
 import json
 from pathlib import Path
 
+# Cache for restaurant data loaded from JSON
+_restaurant_data_cache = None
+
+def _load_restaurant_data() -> list[Dict]:
+    """Load restaurant data from JSON file (cached)."""
+    global _restaurant_data_cache
+    if _restaurant_data_cache is None:
+        data_path = Path(__file__).parent.parent.parent / "data" / "restaurants.json"
+        if data_path.exists():
+            with open(data_path, 'r') as f:
+                _restaurant_data_cache = json.load(f)
+        else:
+            _restaurant_data_cache = []
+    return _restaurant_data_cache
+
+def _find_restaurant_in_json(name: str) -> Dict | None:
+    """Find restaurant by name in JSON data."""
+    restaurants = _load_restaurant_data()
+    name_lower = name.lower().strip()
+    
+    # Try exact match
+    for r in restaurants:
+        r_name = r.get('name', '').lower().strip()
+        if r_name == name_lower:
+            return r
+    
+    # Try substring match (either direction)
+    for r in restaurants:
+        r_name = r.get('name', '').lower().strip()
+        if r_name and (r_name in name_lower or name_lower in r_name):
+            return r
+    
+    # Try word-based matching (more lenient)
+    # Include single-letter words but filter out common single letters
+    name_words = set(word for word in name_lower.split() if len(word) >= 1)
+    # Remove common words (but keep meaningful single letters like 'n' if they're part of the name)
+    common_words = {'the', 'restaurant', 'bar', 'grill', 'cafe', 'café', 'and', '&', 'name', 'restaurant', 'of', 'on', 'at', 'in', 'for', 'to'}
+    name_words_clean = name_words - common_words
+    
+    if name_words_clean:
+        best_match = None
+        best_score = 0
+        for r in restaurants:
+            r_name = r.get('name', '').lower().strip()
+            r_words = set(word for word in r_name.split() if len(word) >= 1)
+            r_words_clean = r_words - common_words
+            
+            if r_words_clean:
+                overlap = name_words_clean & r_words_clean
+                if overlap:
+                    # Score based on overlap ratio - require at least 2 matching words OR high ratio
+                    score = len(overlap) / max(len(name_words_clean), len(r_words_clean))
+                    min_words = min(len(name_words_clean), len(r_words_clean))
+                    # Require at least 50% match OR at least 2 words match (for short names)
+                    if score > best_score and (score >= 0.5 or (len(overlap) >= 2 and min_words <= 4)):
+                        best_score = score
+                        best_match = r
+        
+        if best_match:
+            return best_match
+    
+    return None
+
 
 def _get_price_description(price_level: str, price_level_curated: Optional[str] = None) -> str:
     """Convert price level to natural language description."""
@@ -368,12 +431,55 @@ Extract only the vibe/atmosphere description:"""
         return vibe_summary.strip()[:200]
 
 
-def inject_images_after_vibe(text: str, restaurants: list[Dict]) -> str:
+def _find_restaurant_by_name(name: str, restaurants: list[Dict], search_results: Dict = None) -> Dict | None:
+    """Find a restaurant by name from the restaurants list or search results.
+    
+    Args:
+        name: Restaurant name to find
+        restaurants: List of restaurants to search
+        search_results: Optional search results dict that might contain more restaurants
+    
+    Returns:
+        Restaurant dict if found, None otherwise
+    """
+    name_lower = name.lower().strip()
+    
+    # First, try exact match in restaurants list
+    for r in restaurants:
+        r_name = r.get('name', '').lower().strip()
+        if r_name == name_lower:
+            return r
+    
+    # Try substring matching in restaurants list
+    for r in restaurants:
+        r_name = r.get('name', '').lower().strip()
+        if r_name in name_lower or name_lower in r_name:
+            return r
+    
+    # If search_results provided, try to find in alternatives or other fields
+    if search_results:
+        # Check alternatives
+        for alt in search_results.get('alternatives', []):
+            alt_name = alt.get('name', '').lower().strip()
+            if alt_name == name_lower or (alt_name in name_lower or name_lower in alt_name):
+                return alt
+        
+        # Check top_match
+        top_match = search_results.get('top_match', {})
+        top_name = top_match.get('name', '').lower().strip()
+        if top_name == name_lower or (top_name in name_lower or name_lower in top_name):
+            return top_match
+    
+    return None
+
+
+def inject_images_after_vibe(text: str, restaurants: list[Dict], search_results: Dict = None) -> str:
     """Inject restaurant images after 'Vibe at this restaurant:' sections in the LLM response.
     
     Args:
         text: The LLM-generated markdown text
         restaurants: List of restaurant dicts (top match first, then alternatives)
+        search_results: Optional search results dict for looking up restaurants by name
     
     Returns:
         Text with images injected after vibe sections
@@ -384,16 +490,64 @@ def inject_images_after_vibe(text: str, restaurants: list[Dict]) -> str:
         return text
     
     # Find all restaurant sections by header pattern
-    # Pattern matches: ## Restaurant Name or ## 🏆 Restaurant Name or ## 1. Restaurant Name
-    restaurant_pattern = r'(##\s*(?:🏆\s*)?(?:\d+\.\s*)?[^\n]+)'
+    # Pattern matches: ## Restaurant Name, ## 🏆 Restaurant Name, ## 1. Restaurant Name, ## Alternative Restaurant Name
+    # Also matches: ## Restaurant Name: X format (LLM sometimes uses this)
+    # More flexible pattern to catch all variations
+    restaurant_pattern = r'(##\s*(?:🏆\s*)?(?:\d+\.\s*)?(?:Alternative\s+)?(?:[Rr]estaurant\s+[Nn]ame:\s*)?[^\n]+)'
     sections = re.split(restaurant_pattern, text)
+    
+    print(f"[DEBUG] Image injection: Found {len(sections)} sections, {len(restaurants)} restaurants")
     
     if len(sections) < 3:
         # No restaurant sections found, return as-is
+        print(f"[DEBUG] Image injection: No restaurant sections found (only {len(sections)} sections)")
         return text
     
     result_parts = [sections[0]]  # Text before first restaurant
     restaurant_idx = 0
+    
+    # Build a lookup dict of all available restaurants by name (for faster matching)
+    restaurant_lookup = {}
+    for r in restaurants:
+        r_name = r.get('name', '').lower().strip()
+        if r_name:
+            restaurant_lookup[r_name] = r
+    
+    # Also add restaurants from search_results if provided
+    if search_results:
+        for alt in search_results.get('alternatives', []):
+            alt_name = alt.get('name', '').lower().strip()
+            if alt_name and alt_name not in restaurant_lookup:
+                restaurant_lookup[alt_name] = alt
+        top_match = search_results.get('top_match', {})
+        top_name = top_match.get('name', '').lower().strip()
+        if top_name and top_name not in restaurant_lookup:
+            restaurant_lookup[top_name] = top_match
+    
+    print(f"[DEBUG] Image injection: Built lookup with {len(restaurant_lookup)} restaurants")
+    
+    # Function to get restaurant data (from lookup or JSON file)
+    def get_restaurant_data(name: str) -> Dict | None:
+        """Get restaurant data from lookup first, then JSON file if not found."""
+        name_lower = name.lower().strip()
+        
+        # Try lookup first
+        restaurant = restaurant_lookup.get(name_lower)
+        if restaurant:
+            return restaurant
+        
+        # Try substring in lookup
+        for lookup_name, lookup_rest in restaurant_lookup.items():
+            if lookup_name in name_lower or name_lower in lookup_name:
+                return lookup_rest
+        
+        # If not found in lookup, try JSON file
+        restaurant = _find_restaurant_in_json(name)
+        if restaurant:
+            print(f"[DEBUG]   ✅ Found restaurant in JSON: {restaurant.get('name', 'Unknown')}")
+            return restaurant
+        
+        return None
     
     # Process each restaurant section
     for i in range(1, len(sections), 2):
@@ -401,47 +555,180 @@ def inject_images_after_vibe(text: str, restaurants: list[Dict]) -> str:
             header = sections[i]
             content = sections[i + 1]
             
+            # Extract restaurant name from header for matching
+            header_clean = header.replace('##', '').replace('🏆', '').strip()
+            # Remove numbering if present
+            header_clean = re.sub(r'^\d+\.\s*', '', header_clean)
+            header_clean = re.sub(r'^Alternative\s+', '', header_clean, flags=re.IGNORECASE)
+            # Handle "Restaurant Name: X" format
+            if 'Restaurant Name:' in header_clean or 'restaurant name:' in header_clean.lower():
+                header_clean = re.sub(r'^.*?[Rr]estaurant\s+[Nn]ame:\s*', '', header_clean)
+            header_clean = header_clean.strip()
+            
+            print(f"[DEBUG] Image injection: Processing section {restaurant_idx}, header: '{header_clean[:50]}...'")
+            
             result_parts.append(header)
+            
+            # CRITICAL: Capture restaurant_idx in a closure to ensure each section uses the correct index
+            current_idx = restaurant_idx
             
             # Find "Vibe at this restaurant:" section and inject images after it
             # Pattern: **Vibe at this restaurant:** followed by text until next ** section or end
             vibe_pattern = r'(\*\*Vibe at this restaurant:\*\*\s*\n[^\*]+?)(?=\n\*\*|\n##|\Z)'
             
-            def replace_vibe(match):
+            def replace_vibe(match, idx=current_idx):
                 vibe_text = match.group(1)
                 
-                # Get images for current restaurant
-                if restaurant_idx < len(restaurants):
-                    restaurant = restaurants[restaurant_idx]
+                # Try to match restaurant by index first, then by name if index doesn't work
+                restaurant = None
+                restaurant_name = "Unknown"
+                
+                if idx < len(restaurants):
+                    # Use index-based matching (most reliable)
+                    restaurant = restaurants[idx]
+                    restaurant_name = restaurant.get('name', 'Unknown')
+                else:
+                    # Index out of range - try to match by name from header using lookup
+                    print(f"[DEBUG]   ⚠️  Index {idx} out of range (max: {len(restaurants)-1}), trying name matching")
+                    header_name_lower = header_clean.lower().strip()
+                    print(f"[DEBUG]   Looking for restaurant matching header: '{header_clean[:50]}...'")
+                    
+                    # Try exact match in lookup first
+                    restaurant = restaurant_lookup.get(header_name_lower)
+                    if restaurant:
+                        restaurant_name = restaurant.get('name', 'Unknown')
+                        print(f"[DEBUG]   ✅ Exact lookup match: {restaurant_name}")
+                    else:
+                        # Try substring matching in lookup
+                        for lookup_name, lookup_rest in restaurant_lookup.items():
+                            if lookup_name in header_name_lower or header_name_lower in lookup_name:
+                                restaurant = lookup_rest
+                                restaurant_name = lookup_rest.get('name', 'Unknown')
+                                print(f"[DEBUG]   ✅ Substring lookup match: {restaurant_name}")
+                                break
+                    
+                    if not restaurant:
+                        # Try to get restaurant data from JSON file if not in lookup
+                        print(f"[DEBUG]   Trying get_restaurant_data for: '{header_clean}'")
+                        restaurant = get_restaurant_data(header_clean)
+                        if restaurant:
+                            restaurant_name = restaurant.get('name', 'Unknown')
+                            print(f"[DEBUG]   ✅ Found restaurant via get_restaurant_data: {restaurant_name}")
+                        else:
+                            # Try word-based matching in JSON directly (more lenient)
+                            print(f"[DEBUG]   Trying _find_restaurant_in_json for: '{header_clean}'")
+                            restaurant = _find_restaurant_in_json(header_clean)
+                            if restaurant:
+                                restaurant_name = restaurant.get('name', 'Unknown')
+                                print(f"[DEBUG]   ✅ Found restaurant in JSON via word matching: {restaurant_name}")
+                            else:
+                                print(f"[DEBUG]   ⚠️  Could not find '{header_clean}' in JSON file")
+                                # Try more aggressive matching in restaurants list
+                                for r in restaurants:
+                                    r_name = r.get('name', '').lower().strip()
+                                    if r_name == header_name_lower:
+                                        restaurant = r
+                                        restaurant_name = r.get('name', 'Unknown')
+                                        print(f"[DEBUG]   ✅ Exact name match: {restaurant_name}")
+                                        break
+                        
+                        # If no exact match, try substring matching
+                        if not restaurant:
+                            for r in restaurants:
+                                r_name = r.get('name', '').lower().strip()
+                                # Check if restaurant name appears in header or vice versa
+                                if r_name and (r_name in header_name_lower or header_name_lower in r_name):
+                                    restaurant = r
+                                    restaurant_name = r.get('name', 'Unknown')
+                                    print(f"[DEBUG]   ✅ Substring name match: {restaurant_name}")
+                                    break
+                        
+                        # If still no match, try word-based matching (more lenient)
+                        if not restaurant:
+                            header_words = set(word for word in header_name_lower.split() if len(word) >= 2)  # Lowered to 2 chars
+                            for r in restaurants:
+                                r_name = r.get('name', '').lower().strip()
+                                r_words = set(word for word in r_name.split() if len(word) >= 2)
+                                # Remove common words
+                                common_words = {'the', 'restaurant', 'bar', 'grill', 'cafe', 'café', 'and', '&', 'name', 'restaurant'}
+                                header_words_clean = header_words - common_words
+                                r_words_clean = r_words - common_words
+                                
+                                if header_words_clean and r_words_clean:
+                                    overlap = header_words_clean & r_words_clean
+                                    # More lenient matching: if most words match or if it's a short name
+                                    match_ratio = len(overlap) / len(header_words_clean) if header_words_clean else 0
+                                    if len(overlap) >= 1 and (match_ratio >= 0.5 or len(header_words_clean) <= 2):
+                                        restaurant = r
+                                        restaurant_name = r.get('name', 'Unknown')
+                                        print(f"[DEBUG]   ✅ Word-based match: {restaurant_name} (overlap: {overlap}, ratio: {match_ratio:.2f})")
+                                        break
+                        
+                        # Last resort: try fuzzy matching with normalized names (remove punctuation, extra spaces)
+                        if not restaurant:
+                            header_normalized = re.sub(r'[^\w\s]', ' ', header_name_lower)
+                            header_normalized = ' '.join(header_normalized.split())
+                            for r in restaurants:
+                                r_name = r.get('name', '').lower().strip()
+                                r_normalized = re.sub(r'[^\w\s]', ' ', r_name)
+                                r_normalized = ' '.join(r_normalized.split())
+                                # Check if normalized names are similar
+                                if header_normalized and r_normalized:
+                                    # Check if one contains the other (after normalization)
+                                    if header_normalized in r_normalized or r_normalized in header_normalized:
+                                        restaurant = r
+                                        restaurant_name = r.get('name', 'Unknown')
+                                        print(f"[DEBUG]   ✅ Normalized match: {restaurant_name}")
+                                        break
+                
+                if restaurant:
                     # Get images from restaurant data - prioritize restaurant_photos_urls
                     photos_urls = restaurant.get('restaurant_photos_urls', []) or restaurant.get('photos_urls', [])
                     
                     # Debug logging
-                    print(f"[DEBUG] Injecting images for restaurant {restaurant_idx}: {restaurant.get('name', 'Unknown')}")
-                    print(f"[DEBUG] Found {len(photos_urls)} photo URLs")
+                    print(f"[DEBUG] Image injection: Restaurant {idx} ({restaurant_name})")
+                    print(f"[DEBUG]   Header matched: '{header_clean[:30]}...'")
+                    print(f"[DEBUG]   Found {len(photos_urls)} photo URLs")
                     
                     if photos_urls:
-                        # Filter valid URLs
-                        valid_photos = [url for url in photos_urls[:3] if url and isinstance(url, str) and url.strip()]
+                        # Filter valid URLs and limit to max 3 (or show 1 if that's all there is)
+                        valid_photos = [url for url in photos_urls if url and isinstance(url, str) and url.strip()]
+                        
+                        # Limit to max 3 images, but show all if there's only 1
+                        if len(valid_photos) > 3:
+                            valid_photos = valid_photos[:3]
                         
                         if valid_photos:
-                            print(f"[DEBUG] Injecting {len(valid_photos)} images after vibe section")
+                            print(f"[DEBUG]   ✅ Injecting {len(valid_photos)} images after vibe section for {restaurant_name}")
                             # Add images after vibe text
                             images_markdown = "\n\n"
                             for photo_url in valid_photos:
                                 images_markdown += f"![Restaurant photo]({photo_url})\n"
                             return vibe_text + images_markdown
+                        else:
+                            print(f"[DEBUG]   ⚠️  No valid photos found (all filtered out)")
+                    else:
+                        print(f"[DEBUG]   ⚠️  No photo URLs in restaurant data for {restaurant_name}")
+                else:
+                    print(f"[DEBUG]   ⚠️  Could not match restaurant for header: '{header_clean[:30]}...'")
                 
                 return vibe_text
             
             # Replace vibe sections with images injected
-            content_with_images = re.sub(vibe_pattern, replace_vibe, content, flags=re.DOTALL)
+            # Use lambda to properly capture current_idx
+            content_with_images = re.sub(
+                vibe_pattern, 
+                lambda m: replace_vibe(m, current_idx), 
+                content, 
+                flags=re.DOTALL
+            )
             result_parts.append(content_with_images)
             
             restaurant_idx += 1
         else:
             result_parts.append(sections[i])
     
+    print(f"[DEBUG] Image injection: Processed {restaurant_idx} restaurant sections")
     return ''.join(result_parts)
 
 
@@ -462,10 +749,10 @@ def format_search_results(data: Dict, is_refined: bool = False, include_header: 
         return f"**Ana:** {result}" if include_header else result
     
     top_match = data.get("top_match", {})
-    # Get all restaurants (top match + alternatives) for up to 10 total
+    # Get all restaurants (top match + alternatives) for up to 6 total
     # Only filter alternatives if it's a single restaurant query
     alternatives_raw = data.get("alternatives", [])
-    alternatives = [] if single_restaurant else alternatives_raw[:9]  # Up to 9 alternatives (10 total)
+    alternatives = [] if single_restaurant else alternatives_raw[:5]  # Up to 5 alternatives (6 total)
     match_reasons = data.get("match_reasons", [])
     query = data.get("query", "")
     
@@ -508,7 +795,8 @@ def format_search_results(data: Dict, is_refined: bool = False, include_header: 
                 print(f"[DEBUG]   Sample photos_urls: {photos[0]}")
         
         # Inject images after vibe sections in the LLM explanation
-        llm_with_images = inject_images_after_vibe(llm_explanation, all_restaurants)
+        # Pass search_results so we can look up restaurants by name if they're not in all_restaurants
+        llm_with_images = inject_images_after_vibe(llm_explanation, all_restaurants, search_results=data)
         
         # Use the LLM-generated explanation with images injected
         result += llm_with_images + "\n\n"

@@ -47,3 +47,5 @@ config.json
 *api*key*
 *secret*
 *password*
+.bfg-report/
+bfg.jar

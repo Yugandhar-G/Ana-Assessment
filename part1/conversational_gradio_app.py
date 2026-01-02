@@ -159,10 +159,24 @@ def search_restaurant(query: str) -> Tuple[str, list, str]:
     
     # Check if query is about a specific restaurant for formatting
     # Only set single_restaurant=True if it's actually a specific restaurant query
-    # For general queries, we want to show all alternatives
+    # For general queries (food culture, "best X", etc.), we want to show all alternatives
     parser = get_query_parser()
     detected_restaurant = parser._detect_restaurant_name(query_stripped)
-    single_restaurant = detected_restaurant is not None
+    
+    # Check if this is a food culture query (e.g., "best dessert", "famous dishes")
+    # These should show alternatives even if a restaurant name is mentioned
+    query_lower = query_stripped.lower()
+    food_culture_indicators = [
+        'best', 'famous', 'popular', 'favorite', 'must try', 'what', 'where to find',
+        'dessert', 'desserts', 'dish', 'dishes', 'food', 'eat', 'try', 'specialty',
+        'specialties', 'known for', 'famous for', 'recommend', 'suggest', 'top'
+    ]
+    is_food_culture_query = any(indicator in query_lower for indicator in food_culture_indicators)
+    
+    # Only treat as single restaurant if:
+    # 1. A restaurant name is detected AND
+    # 2. It's NOT a food culture query (which should show alternatives)
+    single_restaurant = detected_restaurant is not None and not is_food_culture_query
     
     # Debug: check what we're getting from API
     alternatives_count = len(search_results.get("alternatives", []))
@@ -179,23 +193,10 @@ def search_restaurant(query: str) -> Tuple[str, list, str]:
         single_restaurant=single_restaurant
     )
     
-    # Extract images from results
-    images = extract_images_from_results(search_results)
-    
-    # Debug: Print image info
-    print(f"[DEBUG] Returning {len(images)} images to gallery")
-    if images:
-        print(f"[DEBUG] Sample image URLs: {images[:3]}")
-        image_status_msg = ""
-    else:
-        print("[DEBUG] No images found in results")
-        # Check what fields are available
-        top_match = search_results.get("top_match", {})
-        if top_match:
-            print(f"[DEBUG] Top match has keys: {list(top_match.keys())}")
-            print(f"[DEBUG] restaurant_photos_urls: {top_match.get('restaurant_photos_urls', 'NOT FOUND')}")
-            print(f"[DEBUG] photos_urls: {top_match.get('photos_urls', 'NOT FOUND')}")
-        image_status_msg = "*No photos available for these restaurants.*"
+    # Images are now injected inline in the markdown, so we don't need a separate gallery
+    # Return empty list for images since they're embedded in the markdown
+    images = []
+    image_status_msg = ""
     
     return result_text, images, image_status_msg
 
@@ -271,22 +272,24 @@ with gr.Blocks(title="Ana AI Restaurant Search") as demo:
                 show_label=False
             )
     
-    with gr.Row():
+    # Images are now embedded inline in the markdown, so we don't need a separate gallery
+    # Keep the components for compatibility but hide them
+    with gr.Row(visible=False):  # Hide the separate image gallery
         with gr.Column():
             image_gallery = gr.Gallery(
                 label="📸 Restaurant Photos",
-                show_label=True,
+                show_label=False,
                 elem_id="restaurant-gallery",
                 columns=4,
                 rows=2,
                 height=400,
                 allow_preview=True,
-                visible=True,
+                visible=False,
                 value=[]  # Initialize with empty list
             )
             image_status = gr.Markdown(
                 value="",
-                visible=True,
+                visible=False,
                 show_label=False
             )
     

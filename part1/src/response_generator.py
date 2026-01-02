@@ -138,7 +138,7 @@ class ResponseGenerator:
         ranked_results: list[ScoredRestaurant],
         top_match: ScoredRestaurant,
         parsed_query: ParsedQuery,
-        max_total_results: int = 10,
+        max_total_results: int = 6,
         base_min_score: float = 0.3,  # Lowered from 0.4 to include more restaurants
     ) -> list[ScoredRestaurant]:
         """
@@ -146,81 +146,113 @@ class ResponseGenerator:
 
         - If query is about a SPECIFIC restaurant, return [] (only show that restaurant).
         - If query is GENERAL (cuisine/item/vibe), return up to max_total_results - 1 alternatives.
-        - Returns up to 9 alternatives (for 10 total restaurants including top match).
+        - Returns up to 5 alternatives (for 6 total restaurants including top match).
         """
-        # Check if query is about a specific restaurant
-        
-        # Check if query is about a specific restaurant
-        # Check if ANY restaurant name from ranked results appears in the query
+        # Check if query is about a SPECIFIC restaurant (not general food culture queries)
+        # CRITICAL: Check for food culture queries FIRST - these should NEVER be treated as restaurant-specific
         query_lower = parsed_query.raw_query.lower()
         is_restaurant_specific = False
         
-        # Normalize query and restaurant names for better matching (remove punctuation, extra spaces)
-        import re
-        query_normalized = re.sub(r'[^\w\s]', ' ', query_lower)
-        query_normalized = ' '.join(query_normalized.split())
+        # Food culture patterns that indicate general queries (should show alternatives)
+        food_culture_patterns = [
+            r'\bbest\b', r'\bfamous\b', r'\bpopular\b', r'\bfavorite\b', r'\bmust try\b',
+            r'\bwhat\b.*\bis\b', r'\bwhat\b.*\bare\b', r'\bwhere to find\b',
+            r'\bdessert\b', r'\bdesserts\b', r'\bdish\b', r'\bdishes\b', r'\bfood\b',
+            r'\beat\b', r'\btry\b', r'\bspecialty\b', r'\bspecialties\b',
+            r'\bknown for\b', r'\bfamous for\b', r'\brecommend\b', r'\bsuggest\b', r'\btop\b'
+        ]
         
-        # Check all restaurants in ranked results to see if any name appears in query
-        for scored in ranked_results[:10]:  # Check top 10 to catch exact matches
-            restaurant_name = (scored.restaurant.name or "").lower()
-            if not restaurant_name:
-                continue
+        import re
+        is_food_culture_query = any(re.search(pattern, query_lower) for pattern in food_culture_patterns)
+        
+        # If it's a food culture query, NEVER treat as restaurant-specific
+        if is_food_culture_query:
+            print(f"[DEBUG] ✅ Food culture query detected - will show alternatives (NOT restaurant-specific)")
+            is_restaurant_specific = False
+        else:
+            # Only check for restaurant names if it's NOT a food culture query
+            # Normalize query and restaurant names for better matching (remove punctuation, extra spaces)
+            query_normalized = re.sub(r'[^\w\s]', ' ', query_lower)
+            query_normalized = ' '.join(query_normalized.split())
             
-            # Normalize restaurant name
-            name_normalized = re.sub(r'[^\w\s]', ' ', restaurant_name)
-            name_normalized = ' '.join(name_normalized.split())
-            
-            # Method 1: Check if restaurant name appears as substring in query (most reliable)
-            # This catches cases like "ULUPALAKUA RANCH STORE & GRILL" in query
-            if name_normalized in query_normalized:
-                print(f"DEBUG: Restaurant name match found: '{name_normalized}' in '{query_normalized}'")
-                is_restaurant_specific = True
-                break
-            
-            # Method 2: Check if significant unique words from restaurant name appear in query
-            # Remove only very common words, keep restaurant-specific words like "store", "grill", etc.
-            common_words = {'the', 'a', 'an', 'at', 'for', 'with', 'about', 'what', 'where', 'when', 'how', 'is', 'are', 'was', 'were', 'restaurant', 'restaurants', 'can', 'you', 'tell', 'me', 'famous', 'for', 'and', 'or', 'but'}
-            name_words = set(word for word in name_normalized.split() if word not in common_words and len(word) >= 3)
-            query_words = set(word for word in query_normalized.split() if word not in common_words and len(word) >= 3)
-            
-            if name_words:
-                matching_words = name_words & query_words
-                # If 3+ words match, or if 60%+ of name words match, it's restaurant-specific
-                # For short names (2-3 unique words), require most/all to match
-                # CRITICAL: Require at least 1 matching word (0 matches should never trigger)
-                if len(name_words) <= 3:
-                    # For 1-word names, require exact match. For 2-3 words, allow 1 word difference
-                    min_matches = max(1, len(name_words) - 1) if len(name_words) > 1 else 1
-                    if len(matching_words) >= min_matches:
-                        is_restaurant_specific = True
-                        break
-                else:
-                    if len(matching_words) >= min(3, max(2, int(len(name_words) * 0.6))):
+            # Check all restaurants in ranked results to see if any name appears in query
+            # But require STRONG match (full name or most words) to avoid false positives
+            for scored in ranked_results[:10]:  # Check top 10 to catch exact matches
+                restaurant_name = (scored.restaurant.name or "").lower()
+                if not restaurant_name:
+                    continue
+                
+                # Normalize restaurant name
+                name_normalized = re.sub(r'[^\w\s]', ' ', restaurant_name)
+                name_normalized = ' '.join(name_normalized.split())
+                
+                # Method 1: Check if FULL restaurant name appears in query (most reliable)
+                # This catches cases like "ULUPALAKUA RANCH STORE & GRILL" in query
+                if name_normalized in query_normalized:
+                    print(f"[DEBUG] Restaurant name match found: '{name_normalized}' in '{query_normalized}'")
+                    is_restaurant_specific = True
+                    break
+                
+                # Method 2: For multi-word names, require STRONG match (most words match)
+                # This prevents false positives from single word matches
+                common_words = {'the', 'a', 'an', 'at', 'for', 'with', 'about', 'what', 'where', 'when', 'how', 'is', 'are', 'was', 'were', 'restaurant', 'restaurants', 'can', 'you', 'tell', 'me', 'famous', 'for', 'and', 'or', 'but', 'best', 'in', 'maui', 'hawaii'}
+                name_words = set(word for word in name_normalized.split() if word not in common_words and len(word) >= 4)  # Require 4+ chars to avoid common words
+                query_words = set(word for word in query_normalized.split() if word not in common_words and len(word) >= 4)
+                
+                if name_words and len(name_words) >= 2:  # Only check multi-word names
+                    matching_words = name_words & query_words
+                    # Require at least 2 matching words AND 70%+ match for multi-word names
+                    match_ratio = len(matching_words) / len(name_words) if name_words else 0
+                    if len(matching_words) >= 2 and match_ratio >= 0.7:
+                        print(f"[DEBUG] Strong restaurant name match: {len(matching_words)}/{len(name_words)} words match")
                         is_restaurant_specific = True
                         break
         
         # If it's a restaurant-specific query, return exactly 0 alternatives (only top match)
         if is_restaurant_specific:
+            print(f"[DEBUG] ⚠️  Restaurant-specific query detected - returning 0 alternatives")
+            print(f"[DEBUG]   Query: '{parsed_query.raw_query}'")
             return []
+        
+        print(f"[DEBUG] ✅ Not restaurant-specific - will select alternatives")
 
         if not ranked_results or len(ranked_results) <= 1:
             return []
 
-        # Return up to 9 alternatives (for 10 total restaurants: 1 top + 9 alternatives)
+        # Return up to 5 alternatives (for 6 total restaurants: 1 top + 5 alternatives)
+        # For food culture queries, try to show maximum alternatives
         max_alternatives = min(max(0, max_total_results - 1), len(ranked_results) - 1)  # Don't exceed available results
+        
+        # For food culture queries, ensure we're trying to fill all slots
+        if is_food_culture_query:
+            # Try to get as many alternatives as possible (up to max)
+            print(f"[DEBUG] Food culture query detected - maximizing alternatives (target: {max_alternatives})")
 
         top_score = top_match.final_score
         # More lenient scoring for general queries - include more restaurants
         # For perfect matches (score 1.0), use a much lower threshold to include more options
+        # Make thresholds even more lenient to show more related restaurants
         if top_score >= 0.95:
-            dynamic_min_score = max(base_min_score, top_score * 0.5)  # Very lenient for perfect matches
+            dynamic_min_score = max(0.2, top_score * 0.3)  # Very lenient for perfect matches
+        elif top_score >= 0.8:
+            dynamic_min_score = max(0.25, top_score * 0.35)  # Lenient for high scores
         else:
-            dynamic_min_score = max(base_min_score, top_score * 0.4)  # More lenient threshold
+            dynamic_min_score = max(base_min_score, top_score * 0.3)  # More lenient threshold
 
         # Determine query type BEFORE the loop
         is_cuisine_query = bool(parsed_query.preferences.cuisine) and parsed_query.weights.cuisine >= 0.3
         is_vibe_query = parsed_query.weights.vibe >= 0.5
-        is_general_query = is_cuisine_query or is_vibe_query or not is_restaurant_specific
+        
+        # Detect general food culture queries (e.g., "best dessert", "famous dishes", "what to eat")
+        query_lower = parsed_query.raw_query.lower()
+        food_culture_indicators = [
+            'best', 'famous', 'popular', 'favorite', 'must try', 'what', 'where to find',
+            'dessert', 'desserts', 'dish', 'dishes', 'food', 'eat', 'try', 'specialty',
+            'specialties', 'known for', 'famous for', 'recommend', 'suggest'
+        ]
+        is_food_culture_query = any(indicator in query_lower for indicator in food_culture_indicators)
+        
+        is_general_query = is_cuisine_query or is_vibe_query or is_food_culture_query or not is_restaurant_specific
         
 
         alternatives: list[ScoredRestaurant] = []
@@ -229,10 +261,17 @@ class ResponseGenerator:
         
         # DEBUG: Check what we're iterating over
         restaurants_to_check = ranked_results[1:]
-        # print(f"DEBUG: Checking {len(restaurants_to_check)} restaurants (from {len(ranked_results)} total, skipping first)")
+        print(f"[DEBUG] Alternative selection: Checking {len(restaurants_to_check)} restaurants from {len(ranked_results)} total")
+        print(f"[DEBUG] Query type: cuisine={is_cuisine_query}, vibe={is_vibe_query}, food_culture={is_food_culture_query}, general={is_general_query}")
+        print(f"[DEBUG] Score thresholds: base_min={base_min_score}, dynamic_min={dynamic_min_score}, top_score={top_score:.3f}")
 
         for scored in restaurants_to_check:
-            if len(alternatives) >= max_alternatives:
+            # For food culture queries, be more aggressive about filling slots
+            # Only stop early if we've filled all slots AND it's not a food culture query
+            if len(alternatives) >= max_alternatives and not is_food_culture_query:
+                break
+            # For food culture queries, allow some overflow to find better matches
+            if len(alternatives) >= max_alternatives * 1.5:  # Cap at 1.5x to prevent infinite loop
                 break
 
             restaurant = scored.restaurant
@@ -254,32 +293,60 @@ class ResponseGenerator:
             restaurant_price = restaurant.price_level
             restaurant_region = (restaurant.region or "").lower() if restaurant.region else ""
 
-            # For cuisine queries: include if cuisine_score is good (simplified - no other filters)
-            # For other queries: check score threshold and apply filters
+            # More lenient filtering - prioritize showing related restaurants
+            # For food culture queries (e.g., "best dessert"), be VERY lenient
+            if is_food_culture_query:
+                # For food culture queries, include if ANY score is decent OR final_score is reasonable
+                # This ensures we show diverse options for "best X" type queries
+                # Be EXTREMELY lenient - show restaurants even with lower scores
+                # For dessert queries, we want to show MANY options
+                has_decent_score = (
+                    scored.final_score >= 0.1 or  # Very low threshold (was 0.15)
+                    scored.vibe_score >= 0.3 or  # Lowered from 0.4
+                    scored.cuisine_score >= 0.3 or  # Lowered from 0.4
+                    scored.feature_score >= 0.3  # Lowered from 0.4
+                )
+                if has_decent_score:
+                    alternatives.append(scored)
+                    print(f"[DEBUG] Food culture query: Added {restaurant.name} (final_score={scored.final_score:.3f}, vibe={scored.vibe_score:.3f}, feature={scored.feature_score:.3f})")
+                    continue
+                else:
+                    print(f"[DEBUG] Food culture query: Skipped {restaurant.name} (final={scored.final_score:.3f}, vibe={scored.vibe_score:.3f}, feature={scored.feature_score:.3f}) - scores too low")
+            
+            # For cuisine queries: include if cuisine_score is good OR final_score is reasonable
             if is_cuisine_query:
-                # For cuisine queries, include if cuisine_score >= 0.7 OR final_score is good
-                # This ensures we show all relevant cuisine matches up to the limit
-                # IMPORTANT: For cuisine/vibe/food item queries, show up to 10 restaurants total
-                cuisine_condition = scored.cuisine_score >= 0.7
-                score_condition = scored.final_score >= dynamic_min_score
+                # For cuisine queries, include if cuisine_score >= 0.6 OR final_score is reasonable
+                # Lowered threshold from 0.7 to 0.6 to include more restaurants
+                cuisine_condition = scored.cuisine_score >= 0.6
+                score_condition = scored.final_score >= max(0.2, dynamic_min_score * 0.8)  # More lenient
                 if cuisine_condition or score_condition:
                     alternatives.append(scored)
-                # Always continue for cuisine queries (don't fall through to else block)
                 continue
             else:
-                # For non-cuisine queries, check score threshold and apply filters
-                if scored.final_score < dynamic_min_score:
-                    continue
+                # For non-cuisine queries, be more lenient with score threshold
+                # Lower threshold to include more related restaurants
+                lenient_score_threshold = max(0.2, dynamic_min_score * 0.7)
+                if scored.final_score < lenient_score_threshold:
+                    # Still check if it has good individual scores (vibe, cuisine, etc.)
+                    has_good_individual_score = (
+                        scored.vibe_score >= 0.5 or  # Lowered from 0.6
+                        scored.cuisine_score >= 0.5 or  # Lowered from 0.6
+                        scored.feature_score >= 0.5  # Lowered from 0.6
+                    )
+                    if not has_good_individual_score:
+                        continue
                 
-                # Apply additional filters for non-cuisine queries
+                # Apply filters but make them less strict
                 is_relevant = True
                 
-                # Price relevance - only filter if price is explicitly important
-                if parsed_query.preferences.price and parsed_query.weights.price >= 0.5:
+                # Price relevance - only filter if price is VERY important (weight >= 0.7)
+                # Lowered threshold from 0.5 to 0.7 to be less strict
+                if parsed_query.preferences.price and parsed_query.weights.price >= 0.7:
                     if restaurant_price not in parsed_query.preferences.price:
                         is_relevant = False
                 
-                # Location relevance - skip for island names (already filtered by HardFilter)
+                # Location relevance - be more lenient, only filter for very specific locations
+                # Skip location filtering for island names (already filtered by HardFilter)
                 if is_relevant and parsed_query.location:
                     query_loc = parsed_query.location.lower().strip()
                     island_names = {
@@ -288,30 +355,41 @@ class ResponseGenerator:
                     }
                     # Skip location filtering for island-level queries
                     if query_loc not in island_names:
+                        # Only filter if location weight is high AND no match at all
+                        # Be more lenient - allow if region OR city matches OR if location weight is low
                         region_match = query_loc in restaurant_region if restaurant_region else False
                         city = getattr(restaurant, "city", None)
                         city_match = query_loc in city.lower() if city else False
-                        if not (region_match or city_match):
+                        # Only filter out if location is very important (weight >= 0.6) AND no match
+                        location_weight = getattr(parsed_query.weights, 'location', 0.0) if hasattr(parsed_query.weights, 'location') else 0.0
+                        if not (region_match or city_match) and location_weight >= 0.6:
                             is_relevant = False
+                        # If location weight is lower, don't filter - show restaurants from nearby areas
                 
-                # Feature relevance - only filter if features are very important
+                # Feature relevance - only filter if features are VERY important (weight >= 0.7)
+                # Lowered threshold from 0.5 to 0.7 to be less strict
                 if (
                     is_relevant
                     and parsed_query.preferences.features
-                    and parsed_query.weights.features >= 0.5
+                    and parsed_query.weights.features >= 0.7
                 ):
                     has_feature = any(
                         restaurant.features.get(feature.lower().replace(" ", "_"), False)
                         or restaurant.features.get(feature.lower(), False)
                         for feature in parsed_query.preferences.features
                     )
-                    if not has_feature and scored.feature_score < 0.3:
+                    # Only filter if no feature match AND feature score is very low
+                    if not has_feature and scored.feature_score < 0.2:
                         is_relevant = False
 
                 if is_relevant:
                     alternatives.append(scored)
 
         # No extra sorting: keep fusion ranking order
+        print(f"[DEBUG] Selected {len(alternatives)} alternatives (max allowed: {max_alternatives})")
+        if len(alternatives) < max_alternatives and len(ranked_results) > len(alternatives) + 1:
+            print(f"[DEBUG] WARNING: Only {len(alternatives)} alternatives selected but {len(ranked_results)-1} available. Consider relaxing filters.")
+        
         return alternatives[:max_alternatives]
     
     def _determine_confidence(self, top_score: float, num_results: int) -> str:
@@ -491,7 +569,23 @@ Should any restaurants be reordered based on your knowledge of Maui/Hawaii dinin
         ranked_results, llm_reasoning = await self._llm_reason_about_results(parsed_query, ranked_results)
         
         top_match = ranked_results[0]
-        alternatives = self._select_relevant_alternatives(ranked_results, top_match, parsed_query)
+        
+        # For food culture queries, request more alternatives to show diversity
+        query_lower = parsed_query.raw_query.lower()
+        food_culture_indicators = [
+            'best', 'famous', 'popular', 'favorite', 'must try', 'what', 'where to find',
+            'dessert', 'desserts', 'dish', 'dishes', 'food', 'eat', 'try', 'specialty',
+            'specialties', 'known for', 'famous for', 'recommend', 'suggest', 'top'
+        ]
+        is_food_culture_query = any(indicator in query_lower for indicator in food_culture_indicators)
+        max_total = 6  # Show top 6 restaurants (1 top + 5 alternatives) - ranked properly
+        
+        alternatives = self._select_relevant_alternatives(ranked_results, top_match, parsed_query, max_total_results=max_total)
+        print(f"[DEBUG] ResponseGenerator: Selected {len(alternatives)} alternatives out of {len(ranked_results)} ranked results")
+        if alternatives:
+            print(f"[DEBUG] Alternative restaurants: {[alt.restaurant.name for alt in alternatives[:5]]}")
+        else:
+            print(f"[DEBUG] WARNING: No alternatives selected! This might be why only one restaurant is shown.")
         restaurant = top_match.restaurant
         
         features_list = []
@@ -603,6 +697,7 @@ Atmosphere: {restaurant.vibe.formality} | Noise: {restaurant.vibe.noise_level} |
         
         # Build alternatives information
         alternatives_info = ""
+        print(f"[DEBUG] Building alternatives_info: {len(alternatives)} alternatives available")
         if alternatives:
             alternatives_info = "\n\n**Also Consider (Alternative Options):**\n"
             for i, alt in enumerate(alternatives, 1):
@@ -640,6 +735,14 @@ Atmosphere: {restaurant.vibe.formality} | Noise: {restaurant.vibe.noise_level} |
    {f"- Videos: {', '.join(alt_video_urls)}" if alt_video_urls else ""}
 """
         
+        # CRITICAL: Log if alternatives are being included
+        print(f"[DEBUG] LLM Prompt: Including {len(alternatives)} alternatives in prompt")
+        print(f"[DEBUG] alternatives_info length: {len(alternatives_info)} characters")
+        if alternatives_info:
+            print(f"[DEBUG] ✅ alternatives_info preview: {alternatives_info[:200]}...")
+        if not alternatives:
+            print(f"[DEBUG] ⚠️  WARNING: No alternatives to include! This will result in only one restaurant being shown.")
+        
         user_prompt = f"""
 User Query: {parsed_query.raw_query}
 
@@ -654,6 +757,8 @@ Why this restaurant matches (for reference):
 {match_context}
 {video_note}
 {alternatives_info}
+
+**CRITICAL: YOU HAVE {len(alternatives)} ALTERNATIVE RESTAURANTS LISTED ABOVE. YOU MUST INCLUDE ALL {len(alternatives)} OF THEM IN YOUR RESPONSE. DO NOT SKIP ANY.**
 
 **IMPORTANT INSTRUCTIONS - STRUCTURED RESPONSE FORMAT:**
 **CRITICAL: You MUST format your response using this exact structure for EACH restaurant:**
@@ -684,7 +789,7 @@ Then, for EACH alternative restaurant, use the SAME structure:
 [On a SINGLE LINE, menu items or cuisine specialties as comma-separated list]
 
 **Vibe at this restaurant:**
-[Vibe description]
+[CRITICAL: Use the EXACT vibe_summary text from the restaurant data (restaurants.json). Use it directly - do NOT paraphrase.]
 
 **Features:**
 [On a SINGLE LINE, features list as comma-separated]
@@ -692,12 +797,14 @@ Then, for EACH alternative restaurant, use the SAME structure:
 **Videos:**
 [Video links if available]
 
+**CRITICAL REMINDER**: You have {len(alternatives)} alternative restaurants listed above. You MUST include ALL {len(alternatives)} of them in your response, each in the structured format shown above. Do NOT skip any alternatives. For queries about food culture (like "best dessert", "famous dishes"), showing multiple diverse options is essential - users want to see variety.
+
 **CONTENT GUIDELINES:**
 1. **USE LLM REASONING**: The "LLM REASONING & CONTEXT" section above contains insights from analyzing this query. Use these insights to provide a more informed, contextually aware response. If the reasoning suggests certain restaurants are better fits or identifies cultural context, incorporate that into your response.
 2. **START WITH YOUR EXPERTISE**: For general questions, begin with your knowledge about the topic, then connect to restaurants using the structured format above. Use the LLM reasoning to enhance your knowledge-based response.
 3. **COMBINE KNOWLEDGE + DATA**: Use your general knowledge about Maui/Hawaii food culture AND the restaurant data together. The LLM reasoning helps bridge these - use it to provide richer context.
 4. **Be accurate**: Only claim features/menu items that are actually in the restaurant data provided.
-5. **For alternatives**: You MUST include ALL {len(alternatives)} alternatives listed above, each in the structured format.
+5. **CRITICAL - ALTERNATIVES**: You MUST include ALL {len(alternatives)} alternatives listed above, each in the structured format. DO NOT skip any alternatives. For food culture queries (like "best dessert", "famous dishes"), showing multiple options is especially important - users want to see diverse recommendations. Include every single alternative restaurant provided.
 6. **Menu items**: Use the "Popular menu items" field if available, otherwise mention cuisine type and typical dishes based on your knowledge of that cuisine.
 7. **Vibe**: CRITICAL - Use the EXACT vibe_summary text from restaurants.json. Do NOT paraphrase or summarize. The vibe_summary field contains the authentic description of the restaurant's atmosphere and vibe - use it directly from the restaurant data provided.
 8. **Features**: List only the features that are marked as True in the Features field, formatted as comma-separated list.

@@ -272,6 +272,15 @@ class AnaVibeSearch:
         await self._ensure_initialized()
         parsed_query = await self.query_parser.parse(query)
         
+        # STEP 0: Enhance structured query with LLM general knowledge
+        # This adds implicit requirements, cultural context, and domain knowledge
+        # BEFORE RAG retrieval, so RAG uses the enriched structured query
+        # Flow: User Query -> Query Parser -> LLM Enhancement -> RAG -> LLM Response
+        from .query_enhancer import QueryEnhancer
+        query_enhancer = QueryEnhancer(client=self.client)
+        parsed_query = await query_enhancer.enhance_query(parsed_query)
+        logger.info(f"✅ Query enhanced with LLM knowledge - ready for RAG retrieval")
+        
         # Check if query contains a specific restaurant name
         # BUT: Don't treat as exact match if cuisine is explicitly requested and restaurant doesn't match
         exact_restaurant = self._find_restaurant_by_name_in_query(query)
@@ -324,10 +333,20 @@ class AnaVibeSearch:
         
         # More features = need more candidates to find rare feature matches
         # Cuisine queries also need more candidates since we rely on embeddings + filtering
+        # General queries (vibe, food culture, etc.) also need more candidates to show diverse options
+        is_general_query = (
+            parsed_query.weights.vibe >= 0.5 or  # Vibe-focused queries
+            not parsed_query.preferences.cuisine or  # No specific cuisine
+            parsed_query.weights.cuisine < 0.3  # Low cuisine weight (general food queries)
+        )
+        
         if feature_count >= 2:
-            n_results = 40 if cuisine_explicitly_requested else 30
+            n_results = 50 if cuisine_explicitly_requested else (45 if is_general_query else 35)
         else:
-            n_results = 30 if cuisine_explicitly_requested else 20
+            n_results = 40 if cuisine_explicitly_requested else (35 if is_general_query else 25)
+        
+        logger.info(f"   Query type: cuisine_explicit={cuisine_explicitly_requested}, general={is_general_query}, features={feature_count}")
+        logger.info(f"   Retrieving {n_results} candidates from vector search")
 
         # Enhance semantic query to better capture cuisine in embeddings
         # This is critical since ChromaDB doesn't support $contains for metadata filtering
@@ -520,6 +539,11 @@ class AnaVibeSearch:
         """
         await self._ensure_initialized()
         parsed_query = await self.query_parser.parse(query)
+        
+        # Enhance structured query with LLM general knowledge (same as regular search)
+        from .query_enhancer import QueryEnhancer
+        query_enhancer = QueryEnhancer(client=self.client)
+        parsed_query = await query_enhancer.enhance_query(parsed_query)
         
         # Check if query contains a specific restaurant name
         # BUT: Don't treat as exact match if cuisine is explicitly requested and restaurant doesn't match
