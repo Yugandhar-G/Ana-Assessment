@@ -251,7 +251,7 @@ class ChatCompletions:
             )
         except asyncio.TimeoutError:
             raise ConnectionError(
-                "Gemini API call timed out after 90 seconds. "
+                "Gemini API call timed out after 120 seconds. "
                 "The API might be slow or overloaded. Please try again."
             )
         

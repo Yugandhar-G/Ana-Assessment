@@ -17,6 +17,7 @@ chroma_db/
 # Backup files (may contain API keys)
 *.backup
 *backup*
+*.bak
 
 # IDE
 .vscode/

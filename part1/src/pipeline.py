@@ -375,6 +375,24 @@ class AnaVibeSearch:
                         break  # Found a match, no need to check other excluded cuisines
                 if excluded:
                     continue  # Skip this restaurant entirely
+            if parsed_query.must_not.features:
+                # Check excluded features (e.g., "loud", "quiet", or specific feature names)
+                excluded_feature = False
+                for feature in parsed_query.must_not.features:
+                    feature_lower = feature.lower()
+                    # Special handling for noise level features
+                    if feature_lower == "loud" and restaurant.vibe and restaurant.vibe.noise_level == "loud":
+                        excluded_feature = True
+                        break
+                    if feature_lower == "quiet" and restaurant.vibe and restaurant.vibe.noise_level == "quiet":
+                        excluded_feature = True
+                        break
+                    # Check general features
+                    if restaurant.features.get(feature, False):
+                        excluded_feature = True
+                        break
+                if excluded_feature:
+                    continue  # Skip this restaurant entirely
             filtered_restaurants.append(restaurant)
         
         logger.info(f"   After basic filtering: {len(filtered_restaurants)} restaurants available for Gemini")
@@ -484,6 +502,24 @@ class AnaVibeSearch:
                         break  # Found a match, no need to check other excluded cuisines
                 if excluded:
                     continue  # Skip this restaurant entirely
+            if parsed_query.must_not.features:
+                # Check excluded features (e.g., "loud", "quiet", or specific feature names)
+                excluded_feature = False
+                for feature in parsed_query.must_not.features:
+                    feature_lower = feature.lower()
+                    # Special handling for noise level features
+                    if feature_lower == "loud" and restaurant.vibe and restaurant.vibe.noise_level == "loud":
+                        excluded_feature = True
+                        break
+                    if feature_lower == "quiet" and restaurant.vibe and restaurant.vibe.noise_level == "quiet":
+                        excluded_feature = True
+                        break
+                    # Check general features
+                    if restaurant.features.get(feature, False):
+                        excluded_feature = True
+                        break
+                if excluded_feature:
+                    continue  # Skip this restaurant entirely
             filtered_restaurants.append(restaurant)
         
         logger.info(f"   After basic filtering: {len(filtered_restaurants)} restaurants available for Gemini")
@@ -579,4 +615,3 @@ class AnaVibeSearch:
         ]
         scored_results = await asyncio.gather(*tasks)
         return list(scored_results)
-
