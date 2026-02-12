@@ -367,9 +367,14 @@ class AnaVibeSearch:
                     continue
             if parsed_query.must_not.cuisine and restaurant.cuisine:
                 restaurant_cuisine_lower = restaurant.cuisine.lower()
+                # Check if restaurant cuisine matches any excluded cuisine
+                excluded = False
                 for excluded_cuisine in parsed_query.must_not.cuisine:
                     if excluded_cuisine.lower() in restaurant_cuisine_lower:
-                        continue
+                        excluded = True
+                        break  # Found a match, no need to check other excluded cuisines
+                if excluded:
+                    continue  # Skip this restaurant entirely
             filtered_restaurants.append(restaurant)
         
         logger.info(f"   After basic filtering: {len(filtered_restaurants)} restaurants available for Gemini")
@@ -471,9 +476,14 @@ class AnaVibeSearch:
                     continue
             if parsed_query.must_not.cuisine and restaurant.cuisine:
                 restaurant_cuisine_lower = restaurant.cuisine.lower()
+                # Check if restaurant cuisine matches any excluded cuisine
+                excluded = False
                 for excluded_cuisine in parsed_query.must_not.cuisine:
                     if excluded_cuisine.lower() in restaurant_cuisine_lower:
-                        continue
+                        excluded = True
+                        break  # Found a match, no need to check other excluded cuisines
+                if excluded:
+                    continue  # Skip this restaurant entirely
             filtered_restaurants.append(restaurant)
         
         logger.info(f"   After basic filtering: {len(filtered_restaurants)} restaurants available for Gemini")

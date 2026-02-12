@@ -355,6 +355,7 @@ class ChatCompletions:
                         "done": False,
                     }
             
+            # Yield completion marker only once
             yield {
                 "content": "",
                 "done": True,
@@ -368,11 +369,6 @@ class ChatCompletions:
             raise ConnectionError(
                 f"Error during Gemini streaming: {str(e)}"
             ) from e
-        
-        yield {
-            "content": "",
-            "done": True,
-        }
 
 
 class Embeddings:
