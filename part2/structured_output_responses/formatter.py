@@ -492,8 +492,8 @@ def inject_images_after_vibe(text: str, restaurants: list[Dict], search_results:
     # Find all restaurant sections by header pattern
     # Pattern matches: ## Restaurant Name, ## 🏆 Restaurant Name, ## 1. Restaurant Name, ## Alternative Restaurant Name
     # Also matches: ## Restaurant Name: X format (LLM sometimes uses this)
-    # More flexible pattern to catch all variations
-    restaurant_pattern = r'(##\s*(?:🏆\s*)?(?:\d+\.\s*)?(?:Alternative\s+)?(?:[Rr]estaurant\s+[Nn]ame:\s*)?[^\n]+)'
+    # More flexible pattern to catch all variations, including when LLM forgets the ## but uses 🏆
+    restaurant_pattern = r'(##\s*(?:🏆\s*)?(?:\d+\.\s*)?(?:Alternative\s+)?(?:[Rr]estaurant\s+[Nn]ame:\s*)?[^\n]+|###\s*(?:🏆\s*)?[^\n]+|(?<=\n)🏆\s+[^\n]+)'
     sections = re.split(restaurant_pattern, text)
     
     print(f"[DEBUG] Image injection: Found {len(sections)} sections, {len(restaurants)} restaurants")
@@ -564,7 +564,7 @@ def inject_images_after_vibe(text: str, restaurants: list[Dict], search_results:
             content = sections[i + 1]
             
             # Extract restaurant name from header for matching
-            header_clean = header.replace('##', '').replace('🏆', '').strip()
+            header_clean = header.replace('##', '').replace('###', '').replace('🏆', '').strip()
             # Remove numbering if present
             header_clean = re.sub(r'^\d+\.\s*', '', header_clean)
             header_clean = re.sub(r'^Alternative\s+', '', header_clean, flags=re.IGNORECASE)
@@ -574,8 +574,6 @@ def inject_images_after_vibe(text: str, restaurants: list[Dict], search_results:
             header_clean = header_clean.strip()
             
             print(f"[DEBUG] Image injection: Processing section, header: '{header_clean[:50]}...'")
-            
-            result_parts.append(header)
             
             # Find "Vibe at this restaurant:" section and inject images after it
             # Pattern: **Vibe at this restaurant:** followed by text until next ** section or end
@@ -690,11 +688,12 @@ def inject_images_after_vibe(text: str, restaurants: list[Dict], search_results:
             
             # Find "Videos:" section and inject/correct video links
             # Pattern: **Videos:** followed by text until next ## or end
+            # Updated to be more precise and NOT consume trailing newlines that are needed for headers
             video_section_pattern = r'(\*\*Videos:\*\*\s*\n)(.+?)(?=\n\*\*|\n##|\Z)'
             
             def replace_videos(match):
                 header_part = match.group(1)
-                existing_content = match.group(2).strip()
+                existing_content = match.group(2)
                 
                 restaurant = get_restaurant_data(header_clean)
                 if restaurant:
@@ -703,7 +702,7 @@ def inject_images_after_vibe(text: str, restaurants: list[Dict], search_results:
                         video_markdown = ""
                         for url in video_urls:
                             video_markdown += f"- [{url}]({url})\n"
-                        return header_part + video_markdown
+                        return header_part + video_markdown.strip() # Removed strip() from existing_content but need one here for safety
                 
                 return header_part + existing_content
             
@@ -714,6 +713,17 @@ def inject_images_after_vibe(text: str, restaurants: list[Dict], search_results:
                 flags=re.DOTALL
             )
             
+            # CRITICAL FIX: Ensure there's a newline before each header (except possibly the very first one)
+            # and that the header is correctly joined to the content.
+            if result_parts and not result_parts[-1].endswith('\n'):
+                result_parts.append('\n')
+            
+            result_parts.append(header)
+            
+            # Ensure header ends with a newline before content
+            if not header.endswith('\n'):
+                result_parts.append('\n')
+                
             result_parts.append(content_with_media)
             
             restaurant_idx += 1
@@ -760,7 +770,16 @@ def format_search_results(data: Dict, is_refined: bool = False, include_header: 
         single_restaurant: If True, only show the top match (no alternatives)
     """
     if not data.get("success", False):
-        result = f"{data.get('explanation', 'An error occurred.')}\n"
+        result = ""
+        # Add thinking process even on failure
+        thinking_process = data.get("thinking_process", [])
+        if thinking_process:
+            result += "### 🧠 Thinking Process\n"
+            for step in thinking_process:
+                result += f"{step}\n"
+            result += "\n---\n\n"
+            
+        result += f"{data.get('explanation', 'An error occurred.')}\n"
         if data.get("caveats"):
             for caveat in data.get("caveats", []):
                 result += f"- {caveat}\n"
@@ -773,6 +792,7 @@ def format_search_results(data: Dict, is_refined: bool = False, include_header: 
     alternatives = [] if single_restaurant else alternatives_raw[:5]  # Up to 5 alternatives (6 total)
     match_reasons = data.get("match_reasons", [])
     query = data.get("query", "")
+    thinking_process = data.get("thinking_process", [])
     
     # Debug: print what we're getting
     print(f"[DEBUG] Formatter: single_restaurant={single_restaurant}, alternatives_count={len(alternatives_raw)}, filtered={len(alternatives)}")
@@ -782,6 +802,13 @@ def format_search_results(data: Dict, is_refined: bool = False, include_header: 
     llm_explanation = data.get("explanation", "").strip()
     
     result = ""
+    
+    # Add Thinking Process at the very top
+    if thinking_process:
+        result += "### 🧠 Thinking Process\n"
+        for step in thinking_process:
+            result += f"{step}\n"
+        result += "\n---\n\n"
     
     # Add header
     if include_header:

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ana AI | Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0f172a;
+            overflow: hidden;
+        }
+        .serif {
+            font-family: 'Playfair Display', serif;
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .gradient-bg {
+            background: radial-gradient(circle at top left, #1e293b, #0f172a);
+        }
+        .maui-accent {
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .animated-blob {
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(251, 191, 36, 0.05) 100%);
+            filter: blur(80px);
+            border-radius: 50%;
+            z-index: 0;
+            animation: move 20s infinite alternate;
+        }
+        @keyframes move {
+            from { transform: translate(-10%, -10%); }
+            to { transform: translate(20%, 20%); }
+        }
+        .input-focus:focus {
+            border-color: #fbbf24;
+            box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.2);
+        }
+    </style>
+</head>
+<body class="gradient-bg flex items-center justify-center min-h-screen relative p-4">
+    <!-- Background Elements -->
+    <div class="animated-blob" style="top: -10%; left: -10%;"></div>
+    <div class="animated-blob" style="bottom: -10%; right: -10%; animation-delay: -5s;"></div>
+    
+    <!-- Login Container -->
+    <div class="glass w-full max-auto rounded-3xl p-8 md:p-12 relative z-10 overflow-hidden" style="max-width: 480px;">
+        <!-- Logo Section -->
+        <div class="text-center mb-10">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 mb-4">
+                <i data-lucide="palmtree" class="w-8 h-8 text-amber-500"></i>
+            </div>
+            <h1 class="serif text-4xl text-white mb-2">Welcome to <span class="maui-accent">Ana AI</span></h1>
+            <p class="text-slate-400 font-light">Your personal Maui culinary guide</p>
+        </div>
+
+        <!-- Form Section -->
+        <form class="space-y-6">
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-slate-300 ml-1">Email Address</label>
+                <div class="relative group">
+                    <i data-lucide="mail" class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-amber-500 transition-colors"></i>
+                    <input type="email" placeholder="aloha@example.com" 
+                        class="w-full bg-slate-900/50 border border-slate-700 rounded-xl py-3 pl-12 pr-4 text-white placeholder:text-slate-600 outline-none transition-all input-focus">
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <div class="flex justify-between items-center ml-1">
+                    <label class="text-sm font-medium text-slate-300">Password</label>
+                    <a href="#" class="text-xs text-amber-500 hover:text-amber-400 transition-colors">Forgot password?</a>
+                </div>
+                <div class="relative group">
+                    <i data-lucide="lock" class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-amber-500 transition-colors"></i>
+                    <input type="password" placeholder="••••••••" 
+                        class="w-full bg-slate-900/50 border border-slate-700 rounded-xl py-3 pl-12 pr-4 text-white placeholder:text-slate-600 outline-none transition-all input-focus">
+                </div>
+            </div>
+
+            <button type="submit" 
+                class="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold py-3.5 rounded-xl transition-all shadow-lg shadow-amber-500/20 active:scale-[0.98]">
+                Start Exploring
+            </button>
+        </form>
+
+        <!-- Divider -->
+        <div class="relative my-8">
+            <div class="absolute inset-0 flex items-center">
+                <div class="w-full border-t border-slate-700/50"></div>
+            </div>
+            <div class="relative flex justify-center text-xs uppercase">
+                <span class="bg-slate-900/20 px-2 text-slate-500 backdrop-blur-sm">Or continue with</span>
+            </div>
+        </div>
+
+        <!-- Social Logins -->
+        <div class="grid grid-cols-2 gap-4">
+            <button class="flex items-center justify-center gap-2 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-xl py-2.5 transition-all text-white text-sm">
+                <i data-lucide="chrome" class="w-4 h-4"></i>
+                Google
+            </button>
+            <button class="flex items-center justify-center gap-2 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-xl py-2.5 transition-all text-white text-sm">
+                <i data-lucide="apple" class="w-4 h-4"></i>
+                Apple
+            </button>
+        </div>
+
+        <!-- Footer -->
+        <p class="text-center text-sm text-slate-500 mt-10">
+            Don't have an account? 
+            <a href="#" class="text-amber-500 hover:text-amber-400 font-medium transition-colors">Sign up</a>
+        </p>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

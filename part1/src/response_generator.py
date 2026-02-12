@@ -12,9 +12,9 @@ class ResponseGenerator:
     def __init__(self, client: AsyncGeminiClient | None = None, model: str | None = None):
         self.client = client or AsyncGeminiClient(
             api_key=os.getenv("GEMINI_API_KEY"),
-            default_chat_model=os.getenv("GEMINI_CHAT_MODEL", "gemini-2.0-flash"),
+            default_chat_model=os.getenv("GEMINI_CHAT_MODEL", "gemini-3-flash-preview"),
         )
-        self.model = model or os.getenv("GEMINI_CHAT_MODEL", "gemini-2.0-flash")
+        self.model = model or os.getenv("GEMINI_CHAT_MODEL", "gemini-3-flash-preview")
         self.system_prompt = self._load_prompt()
     
     def _load_prompt(self) -> str:
@@ -149,69 +149,80 @@ class ResponseGenerator:
         - Returns up to 5 alternatives (for 6 total restaurants including top match).
         """
         # Check if query is about a SPECIFIC restaurant (not general food culture queries)
-        # CRITICAL: Check for food culture queries FIRST - these should NEVER be treated as restaurant-specific
-        query_lower = parsed_query.raw_query.lower()
+        # SIMPLIFIED LOGIC: If a restaurant name appears in the query, it's restaurant-specific
+        query_lower = parsed_query.raw_query.lower().strip()
         is_restaurant_specific = False
         
-        # Food culture patterns that indicate general queries (should show alternatives)
-        food_culture_patterns = [
-            r'\bbest\b', r'\bfamous\b', r'\bpopular\b', r'\bfavorite\b', r'\bmust try\b',
-            r'\bwhat\b.*\bis\b', r'\bwhat\b.*\bare\b', r'\bwhere to find\b',
-            r'\bdessert\b', r'\bdesserts\b', r'\bdish\b', r'\bdishes\b', r'\bfood\b',
-            r'\beat\b', r'\btry\b', r'\bspecialty\b', r'\bspecialties\b',
-            r'\bknown for\b', r'\bfamous for\b', r'\brecommend\b', r'\bsuggest\b', r'\btop\b'
-        ]
-        
         import re
-        is_food_culture_query = any(re.search(pattern, query_lower) for pattern in food_culture_patterns)
         
-        # If it's a food culture query, NEVER treat as restaurant-specific
-        if is_food_culture_query:
-            print(f"[DEBUG] ✅ Food culture query detected - will show alternatives (NOT restaurant-specific)")
-            is_restaurant_specific = False
-        else:
-            # Only check for restaurant names if it's NOT a food culture query
-            # Normalize query and restaurant names for better matching (remove punctuation, extra spaces)
-            query_normalized = re.sub(r'[^\w\s]', ' ', query_lower)
-            query_normalized = ' '.join(query_normalized.split())
-            
-            # Check all restaurants in ranked results to see if any name appears in query
-            # But require STRONG match (full name or most words) to avoid false positives
-            for scored in ranked_results[:10]:  # Check top 10 to catch exact matches
-                restaurant_name = (scored.restaurant.name or "").lower()
-                if not restaurant_name:
-                    continue
+        # Normalize query (remove punctuation, extra spaces)
+        query_normalized = re.sub(r'[^\w\s]', ' ', query_lower)
+        query_normalized = ' '.join(query_normalized.split())
+        
+        # Check if top match restaurant name appears in query
+        # This is the PRIMARY indicator - if user mentions a restaurant name, they want that restaurant
+        if ranked_results:
+            top_restaurant_name = (ranked_results[0].restaurant.name or "").lower()
+            if top_restaurant_name:
+                top_name_normalized = re.sub(r'[^\w\s]', ' ', top_restaurant_name)
+                top_name_normalized = ' '.join(top_name_normalized.split())
                 
-                # Normalize restaurant name
-                name_normalized = re.sub(r'[^\w\s]', ' ', restaurant_name)
-                name_normalized = ' '.join(name_normalized.split())
+                # Remove common words for better matching
+                common_words = {'the', 'a', 'an', 'at', 'for', 'with', 'about', 'restaurant', 'restaurants', 
+                               'what', 'where', 'when', 'how', 'is', 'are', 'was', 'were', 'can', 'you', 
+                               'tell', 'me', 'in', 'maui', 'hawaii', 'on', 'of', 'to', 'and', 'or', 'but'}
                 
-                # Method 1: Check if FULL restaurant name appears in query (most reliable)
-                # This catches cases like "ULUPALAKUA RANCH STORE & GRILL" in query
-                if name_normalized in query_normalized:
-                    print(f"[DEBUG] Restaurant name match found: '{name_normalized}' in '{query_normalized}'")
+                # Method 1: Full name match (most reliable)
+                if top_name_normalized in query_normalized:
+                    print(f"[DEBUG] ✅ Restaurant-specific: Top match name '{top_name_normalized}' found in query")
                     is_restaurant_specific = True
-                    break
+                else:
+                    # Method 2: Check for significant word matches (at least 2 words for multi-word names)
+                    top_words = [w for w in top_name_normalized.split() if w not in common_words and len(w) >= 3]
+                    query_words = [w for w in query_normalized.split() if w not in common_words and len(w) >= 3]
+                    
+                    if len(top_words) >= 2:  # Multi-word restaurant names
+                        matching_words = [w for w in top_words if w in query_words]
+                        if len(matching_words) >= 2:  # At least 2 words match
+                            match_ratio = len(matching_words) / len(top_words)
+                            if match_ratio >= 0.5:  # At least 50% of words match (lowered threshold)
+                                print(f"[DEBUG] ✅ Restaurant-specific: {len(matching_words)}/{len(top_words)} words of '{top_name_normalized}' match query")
+                                is_restaurant_specific = True
+                    elif len(top_words) == 1:  # Single-word restaurant name
+                        if top_words[0] in query_words:
+                            print(f"[DEBUG] ✅ Restaurant-specific: Single-word name '{top_words[0]}' found in query")
+                            is_restaurant_specific = True
                 
-                # Method 2: For multi-word names, require STRONG match (most words match)
-                # This prevents false positives from single word matches
-                common_words = {'the', 'a', 'an', 'at', 'for', 'with', 'about', 'what', 'where', 'when', 'how', 'is', 'are', 'was', 'were', 'restaurant', 'restaurants', 'can', 'you', 'tell', 'me', 'famous', 'for', 'and', 'or', 'but', 'best', 'in', 'maui', 'hawaii'}
-                name_words = set(word for word in name_normalized.split() if word not in common_words and len(word) >= 4)  # Require 4+ chars to avoid common words
-                query_words = set(word for word in query_normalized.split() if word not in common_words and len(word) >= 4)
-                
-                if name_words and len(name_words) >= 2:  # Only check multi-word names
-                    matching_words = name_words & query_words
-                    # Require at least 2 matching words AND 70%+ match for multi-word names
-                    match_ratio = len(matching_words) / len(name_words) if name_words else 0
-                    if len(matching_words) >= 2 and match_ratio >= 0.7:
-                        print(f"[DEBUG] Strong restaurant name match: {len(matching_words)}/{len(name_words)} words match")
-                        is_restaurant_specific = True
-                        break
+                # EXCEPTION: Only override if query is CLEARLY a food culture query
+                # Examples: "best dishes at Mama's Fish House" → general (show alternatives)
+                # But: "Mama's Fish House menu" → restaurant-specific (no alternatives)
+                # But: "tell me about Mama's Fish House" → restaurant-specific (no alternatives)
+                if is_restaurant_specific:
+                    # Only treat as general if there's a food culture keyword BEFORE the restaurant name
+                    # AND the query is asking about food/dishes (not about the restaurant itself)
+                    food_culture_patterns = [
+                        r'\bbest\s+(dish|dishes|food|dessert|desserts)\s+(at|in|from)',
+                        r'\bfamous\s+(dish|dishes|food|dessert|desserts)\s+(at|in|from)',
+                        r'\bwhat\s+(dish|dishes|food|dessert|desserts|to\s+eat|to\s+try)\s+(at|in|from)',
+                        r'\bwhere\s+to\s+find\s+(dish|dishes|food|dessert|desserts)',
+                    ]
+                    
+                    # Check if query matches food culture patterns
+                    is_food_culture_pattern = any(re.search(pattern, query_lower) for pattern in food_culture_patterns)
+                    
+                    if is_food_culture_pattern:
+                        # Query like "best dishes at Mama's" → general query, show alternatives
+                        print(f"[DEBUG] ⚠️  Food culture pattern detected - treating as general query")
+                        is_restaurant_specific = False
+                    else:
+                        # Query like "Mama's Fish House menu" or "tell me about Mama's" → restaurant-specific
+                        print(f"[DEBUG] ✅ Restaurant-specific query confirmed - no food culture pattern")
         
         # If it's a restaurant-specific query, return exactly 0 alternatives (only top match)
         if is_restaurant_specific:
             print(f"[DEBUG] ⚠️  Restaurant-specific query detected - returning 0 alternatives")
             print(f"[DEBUG]   Query: '{parsed_query.raw_query}'")
+            print(f"[DEBUG]   Top match: '{ranked_results[0].restaurant.name if ranked_results else 'N/A'}'")
             return []
         
         print(f"[DEBUG] ✅ Not restaurant-specific - will select alternatives")
@@ -222,6 +233,20 @@ class ResponseGenerator:
         # Return up to 5 alternatives (for 6 total restaurants: 1 top + 5 alternatives)
         # For food culture queries, try to show maximum alternatives
         max_alternatives = min(max(0, max_total_results - 1), len(ranked_results) - 1)  # Don't exceed available results
+        
+        # Determine query type BEFORE using it
+        is_cuisine_query = bool(parsed_query.preferences.cuisine) and parsed_query.weights.cuisine >= 0.3
+        is_vibe_query = parsed_query.weights.vibe >= 0.5
+        
+        # Detect general food culture queries (e.g., "best dessert", "famous dishes", "what to eat")
+        query_lower = parsed_query.raw_query.lower()
+        food_culture_indicators = [
+            'best', 'famous', 'popular', 'favorite', 'must try', 'what', 'where to find',
+            'dessert', 'desserts', 'dish', 'dishes', 'food', 'eat', 'try', 'specialty',
+            'specialties', 'known for', 'famous for', 'recommend', 'suggest',
+            'scenic', 'view', 'views', 'oceanfront', 'beachfront', 'with'  # Add scenic/view keywords
+        ]
+        is_food_culture_query = any(indicator in query_lower for indicator in food_culture_indicators)
         
         # For food culture queries, ensure we're trying to fill all slots
         if is_food_culture_query:
@@ -238,19 +263,6 @@ class ResponseGenerator:
             dynamic_min_score = max(0.25, top_score * 0.35)  # Lenient for high scores
         else:
             dynamic_min_score = max(base_min_score, top_score * 0.3)  # More lenient threshold
-
-        # Determine query type BEFORE the loop
-        is_cuisine_query = bool(parsed_query.preferences.cuisine) and parsed_query.weights.cuisine >= 0.3
-        is_vibe_query = parsed_query.weights.vibe >= 0.5
-        
-        # Detect general food culture queries (e.g., "best dessert", "famous dishes", "what to eat")
-        query_lower = parsed_query.raw_query.lower()
-        food_culture_indicators = [
-            'best', 'famous', 'popular', 'favorite', 'must try', 'what', 'where to find',
-            'dessert', 'desserts', 'dish', 'dishes', 'food', 'eat', 'try', 'specialty',
-            'specialties', 'known for', 'famous for', 'recommend', 'suggest'
-        ]
-        is_food_culture_query = any(indicator in query_lower for indicator in food_culture_indicators)
         
         is_general_query = is_cuisine_query or is_vibe_query or is_food_culture_query or not is_restaurant_specific
         
@@ -391,6 +403,95 @@ class ResponseGenerator:
             print(f"[DEBUG] WARNING: Only {len(alternatives)} alternatives selected but {len(ranked_results)-1} available. Consider relaxing filters.")
         
         return alternatives[:max_alternatives]
+    
+    def _format_all_restaurants_for_gemini(self, ranked_results: list[ScoredRestaurant], query: str = "") -> str:
+        """Format restaurants for Gemini to analyze and select from.
+        
+        Smart selection: Shows award winners + top matches + diverse options (up to 150)
+        This balances giving Gemini enough options while maintaining fast latency.
+        """
+        formatted = []
+        query_lower = query.lower() if query else ""
+        
+        # Smart selection strategy for low latency:
+        # 1. All award winners (they're already prioritized and sorted first)
+        # 2. Top scoring restaurants (up to 100 total)
+        # 3. Diverse options for variety (up to 150 total)
+        
+        from .fusion import has_award
+        award_winners = [r for r in ranked_results if has_award(r.restaurant)]
+        non_award_winners = [r for r in ranked_results if not has_award(r.restaurant)]
+        
+        # For dessert queries, prioritize dessert-related restaurants
+        dessert_keywords = ['bakery', 'dessert', 'ice cream', 'shave ice', 'pie', 'sweet']
+        is_dessert_query = any(keyword in query_lower for keyword in dessert_keywords)
+        
+        restaurants_to_show = []
+        
+        # Step 1: Add all award winners (they're already sorted by award level)
+        restaurants_to_show.extend(award_winners)
+        
+        # Step 2: Add top non-award restaurants (sorted by score)
+        # For dessert queries, prioritize dessert-related ones
+        if is_dessert_query:
+            dessert_related = []
+            other_restaurants = []
+            for r in non_award_winners:
+                restaurant = r.restaurant
+                cuisine_lower = (restaurant.cuisine or "").lower()
+                name_lower = (restaurant.name or "").lower()
+                features_str = " ".join([k.lower() for k, v in restaurant.features.items() if v])
+                
+                if any(kw in cuisine_lower or kw in name_lower or kw in features_str for kw in dessert_keywords):
+                    dessert_related.append(r)
+                else:
+                    other_restaurants.append(r)
+            
+            # Add dessert-related first, then others
+            restaurants_to_show.extend(dessert_related[:50])
+            restaurants_to_show.extend(other_restaurants[:50])
+        else:
+            # For non-dessert queries, just add top scoring ones
+            restaurants_to_show.extend(non_award_winners[:100])
+        
+        # Limit to top 150 total for optimal latency (enough options, not too slow)
+        restaurants_to_show = restaurants_to_show[:150]
+        
+        print(f"[DEBUG] Formatting {len(restaurants_to_show)} restaurants for Gemini (out of {len(ranked_results)} total)")
+        print(f"[DEBUG]   - Award winners: {len(award_winners)}")
+        print(f"[DEBUG]   - Total shown: {len(restaurants_to_show)}")
+        
+        for i, scored in enumerate(restaurants_to_show, 1):
+            restaurant = scored.restaurant
+            features_list = [k.replace("_", " ").title() for k, v in restaurant.features.items() if v]
+            features_str = ", ".join(features_list) if features_list else "none specified"
+            
+            # Get video URLs for this restaurant
+            video_urls = get_video_urls_for_restaurant(
+                restaurant_id=restaurant.id,
+                restaurant_name=restaurant.name,
+                google_place_id=getattr(restaurant, "google_place_id", None)
+            )
+            videos_str = ", ".join(video_urls) if video_urls else "none"
+            
+            # Add award information prominently
+            from .fusion import has_award, get_award_level
+            award_badge = ""
+            if has_award(restaurant):
+                award_level = get_award_level(restaurant)
+                if award_level >= 1.0:
+                    award_badge = " 🏆 GOLD AWARD WINNER"
+                elif award_level >= 0.8:
+                    award_badge = " 🏆 SILVER AWARD WINNER"
+                elif award_level >= 0.5:
+                    award_badge = " 🏆 HONORABLE MENTION"
+                else:
+                    award_badge = " 🏆 AWARD WINNER"
+            
+            # Ultra-compact format to fit all restaurants without timeout
+            formatted.append(f"[{i}] {restaurant.name}{award_badge} | {restaurant.cuisine} | {restaurant.price_level_curated or restaurant.price_level} | {restaurant.region} | {restaurant.rating}⭐ | Features: {features_str[:80]} | Vibe: {(restaurant.vibe.vibe_summary[:80] if restaurant.vibe.vibe_summary else (restaurant.highlights[:80] if restaurant.highlights else 'N/A'))} | Menu: {', '.join(getattr(restaurant, 'top_menu_items', [])[:2]) if hasattr(restaurant, 'top_menu_items') and getattr(restaurant, 'top_menu_items', []) else 'N/A'} | Videos: {videos_str}\n")
+        
+        return "\n".join(formatted)
     
     def _determine_confidence(self, top_score: float, num_results: int) -> str:
         """Determine confidence level based on match quality."""
@@ -550,12 +651,164 @@ Should any restaurants be reordered based on your knowledge of Maui/Hawaii dinin
             print(f"[WARNING] LLM reasoning failed: {e}")
             return ranked_results, ""
     
+    def _generate_dynamic_thinking_steps(
+        self,
+        parsed_query: ParsedQuery,
+        needs_web: bool,
+        web_results: list[dict],
+        num_restaurants: int,
+        num_alternatives: int,
+    ) -> list[str]:
+        """Generate dynamic thinking steps based on query type and actual processing."""
+        steps = []
+        query_lower = parsed_query.raw_query.lower()
+        
+        # Detect query type
+        has_restaurant_name = any(
+            word in query_lower for word in ['mama', "merriman", "morimoto", "hula", "mala"]
+        ) or len([r for r in parsed_query.raw_query.split() if len(r) > 3]) <= 3
+        
+        is_cuisine_query = bool(parsed_query.preferences.cuisine) and parsed_query.weights.cuisine >= 0.3
+        is_vibe_query = parsed_query.weights.vibe >= 0.5
+        is_location_query = bool(parsed_query.location) and parsed_query.location.lower() not in ['maui', 'hawaii']
+        
+        # Step 1: Initial search description (varies by query type)
+        if has_restaurant_name:
+            steps.append("🔍 **Looking up specific restaurant information...**")
+        elif is_cuisine_query:
+            cuisine_types = ", ".join(parsed_query.preferences.cuisine[:2])
+            steps.append(f"🔍 **Searching for {cuisine_types} restaurants in Maui...**")
+        elif is_vibe_query:
+            steps.append("🔍 **Searching restaurants by atmosphere and vibe...**")
+        elif is_location_query:
+            steps.append(f"🔍 **Searching restaurants in {parsed_query.location}...**")
+        elif "best" in query_lower or "famous" in query_lower or "popular" in query_lower:
+            if "scenic" in query_lower or "view" in query_lower:
+                steps.append("🔍 **Searching for restaurants with scenic views...**")
+            elif "dessert" in query_lower:
+                steps.append("🔍 **Searching for dessert spots and bakeries...**")
+            else:
+                steps.append("🔍 **Searching restaurant database for top recommendations...**")
+        else:
+            steps.append("🔍 **Searching restaurant database...**")
+        
+        # Step 2: Web search (only if actually performed)
+        if needs_web:
+            if "recent" in query_lower or "trending" in query_lower:
+                steps.append("🌐 **Checking recent reviews and trending discussions...**")
+            elif "culture" in query_lower or "traditional" in query_lower:
+                steps.append("🌐 **Researching cultural context and traditions...**")
+            elif "best" in query_lower or "famous" in query_lower:
+                steps.append("🌐 **Searching web for popular recommendations and reviews...**")
+            else:
+                steps.append("🌐 **Gathering additional context from web sources...**")
+            
+            if web_results:
+                source_types = set(r["source"] for r in web_results)
+                sources_desc = []
+                if "reddit" in source_types:
+                    sources_desc.append("Reddit discussions")
+                if "blog" in source_types:
+                    # Check which blogs were actually found
+                    blog_results = [r for r in web_results if r["source"] == "blog"]
+                    blog_domains = set()
+                    for r in blog_results:
+                        url = r.get("url", "").lower()
+                        if "yelp.com" in url:
+                            blog_domains.add("Yelp")
+                        if "tripadvisor.com" in url:
+                            blog_domains.add("TripAdvisor")
+                        if "eater.com" in url:
+                            blog_domains.add("Eater")
+                        if "timeout.com" in url:
+                            blog_domains.add("Timeout")
+                    
+                    if blog_domains:
+                        sources_desc.append(f"{'/'.join(blog_domains)} reviews")
+                    else:
+                        sources_desc.append("food blogs")
+                if "google" in source_types:
+                    sources_desc.append("web reviews")
+                
+                if sources_desc:
+                    steps.append(f"✅ Found insights from {', '.join(sources_desc)}")
+                else:
+                    steps.append(f"✅ Found {len(web_results)} relevant sources")
+            else:
+                # Web search was attempted but returned no results
+                steps.append("⚠️ **No web results found - using restaurant database only**")
+        
+        # Step 3: Analysis step (varies by results)
+        if num_restaurants == 0:
+            steps.append("⚠️ **No matching restaurants found - expanding search criteria...**")
+        elif num_restaurants == 1:
+            steps.append("🧠 **Analyzing restaurant details...**")
+        elif num_alternatives > 0:
+            if num_alternatives >= 5:
+                steps.append(f"🧠 **Analyzing {num_restaurants} restaurants and ranking top options...**")
+            else:
+                steps.append(f"🧠 **Comparing {num_restaurants} restaurants to find the best matches...**")
+        else:
+            steps.append("🧠 **Analyzing results and cultural context...**")
+        
+        return steps
+    
+    def _needs_web_search(self, query: str, parsed_query: ParsedQuery) -> bool:
+        """Determine if web search is needed."""
+        web_keywords = [
+            "best", "famous", "popular", "trending", "recent",
+            "culture", "traditional", "authentic", "what is",
+            "tell me about", "explain", "famous"
+        ]
+        query_lower = query.lower()
+        return any(keyword in query_lower for keyword in web_keywords)
+    
+    async def _perform_web_search(self, query: str) -> list[dict]:
+        """Perform web search using multi-source search."""
+        if not hasattr(self.client, 'web_search') or not self.client.web_search:
+            print(f"[DEBUG] Web search not available (client.web_search = {getattr(self.client, 'web_search', None)})")
+            return []
+        
+        try:
+            from .multi_source_search import SearchSource
+            print(f"[DEBUG] Performing web search for: '{query}'")
+            results = await self.client.web_search.search(
+                query=f"{query} Maui Hawaii restaurant",
+                sources=[SearchSource.GOOGLE, SearchSource.REDDIT, SearchSource.BLOGS],
+                num_results_per_source=2,
+            )
+            print(f"[DEBUG] Web search returned {len(results)} results")
+            for i, r in enumerate(results[:5], 1):
+                print(f"[DEBUG]   [{i}] {r.source}: {r.title[:60]}...")
+            
+            return [
+                {
+                    "title": r.title,
+                    "url": r.url,
+                    "snippet": r.snippet,
+                    "source": r.source,
+                }
+                for r in results
+            ]
+        except Exception as e:
+            print(f"[DEBUG] Web search error: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
     async def generate(
         self,
         parsed_query: ParsedQuery,
         ranked_results: list[ScoredRestaurant],
     ) -> AnaResponse:
-        """Generate complete response with explanation."""
+        """Generate complete response using Gemini-first architecture.
+        
+        Flow:
+        1. Gemini parses/enhances the query
+        2. Gemini generates answer AND selects restaurants in one unified step
+        3. Web search is integrated and summarized by Gemini
+        4. No ranking - Gemini selects from all restaurants based on query relevance
+        """
         if not ranked_results:
             return AnaResponse(
                 success=False,
@@ -564,263 +817,207 @@ Should any restaurants be reordered based on your knowledge of Maui/Hawaii dinin
                 caveats=["No matching restaurants found"],
             )
         
-        # STEP 1: Use LLM to reason about the query and results
-        # This leverages LLM's general knowledge to validate and enhance recommendations
-        ranked_results, llm_reasoning = await self._llm_reason_about_results(parsed_query, ranked_results)
+        # STEP 1: Use Gemini to parse/enhance the query first
+        print(f"[DEBUG] Step 1: Gemini parsing/enhancing query: '{parsed_query.raw_query}'")
+        enhanced_query_prompt = f"""You are an expert query parser for a restaurant search system in Maui, Hawaii.
+
+**USER QUERY:** {parsed_query.raw_query}
+
+**YOUR TASK:**
+1. Parse and understand the user's query deeply
+2. Enhance it with context about what the user is REALLY looking for
+3. Identify if this is about a SPECIFIC restaurant (mention restaurant name) or a GENERAL query (cuisine, vibe, food culture, etc.)
+4. Extract key requirements: cuisine, price, location, features, atmosphere, etc.
+5. Provide cultural context and implicit requirements
+
+**RESPOND WITH:**
+- Enhanced query understanding (what the user really wants)
+- Query type: "restaurant-specific" or "general"
+- If restaurant-specific: restaurant name
+- Key requirements extracted
+- Cultural context and implicit needs
+
+Keep it concise but insightful."""
         
-        top_match = ranked_results[0]
+        try:
+            query_parse_response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are an expert query parser for restaurant search. Parse queries deeply and enhance them with context."},
+                    {"role": "user", "content": enhanced_query_prompt},
+                ],
+                temperature=0.3,
+                max_tokens=500,
+            )
+            enhanced_query_analysis = query_parse_response.choices[0].message["content"].strip()
+            print(f"[DEBUG] Enhanced query analysis: {enhanced_query_analysis[:200]}...")
+        except Exception as e:
+            print(f"[DEBUG] Query enhancement failed: {e}")
+            enhanced_query_analysis = f"Query: {parsed_query.raw_query}"
         
-        # For food culture queries, request more alternatives to show diversity
-        query_lower = parsed_query.raw_query.lower()
-        food_culture_indicators = [
-            'best', 'famous', 'popular', 'favorite', 'must try', 'what', 'where to find',
-            'dessert', 'desserts', 'dish', 'dishes', 'food', 'eat', 'try', 'specialty',
-            'specialties', 'known for', 'famous for', 'recommend', 'suggest', 'top'
-        ]
-        is_food_culture_query = any(indicator in query_lower for indicator in food_culture_indicators)
-        max_total = 6  # Show top 6 restaurants (1 top + 5 alternatives) - ranked properly
+        # STEP 2: Perform web search (if needed) - Gemini will summarize it
+        needs_web = self._needs_web_search(parsed_query.raw_query, parsed_query)
+        web_results = []
         
-        alternatives = self._select_relevant_alternatives(ranked_results, top_match, parsed_query, max_total_results=max_total)
-        print(f"[DEBUG] ResponseGenerator: Selected {len(alternatives)} alternatives out of {len(ranked_results)} ranked results")
-        if alternatives:
-            print(f"[DEBUG] Alternative restaurants: {[alt.restaurant.name for alt in alternatives[:5]]}")
+        if needs_web:
+            print(f"[DEBUG] Step 2: Performing web search for: '{parsed_query.raw_query}'")
+            web_results = await self._perform_web_search(parsed_query.raw_query)
+            print(f"[DEBUG] Web search completed: {len(web_results)} results")
+            if web_results:
+                print(f"[DEBUG] Web result sources: {set(r['source'] for r in web_results)}")
         else:
-            print(f"[DEBUG] WARNING: No alternatives selected! This might be why only one restaurant is shown.")
-        restaurant = top_match.restaurant
+            print(f"[DEBUG] Web search NOT needed for query: '{parsed_query.raw_query}'")
         
-        features_list = []
-        for feature_key, feature_value in restaurant.features.items():
-            if feature_value:
-                features_list.append(feature_key.replace("_", " ").title())
-        features_str = ", ".join(features_list) if features_list else "none specified"
+        # STEP 3: Format all restaurants for Gemini (no ranking, just all restaurants)
+        print(f"[DEBUG] Step 3: Formatting {len(ranked_results)} restaurants for Gemini (no ranking)")
+        all_restaurants_formatted = self._format_all_restaurants_for_gemini(ranked_results, parsed_query.raw_query)
         
-        price_display = restaurant.price_level_curated or restaurant.price_level
-        open_status = (
-            "yes" if restaurant.is_open_now is True
-            else "no" if restaurant.is_open_now is False
-            else "unknown"
-        )
-        meal_times = ", ".join(restaurant.serves_meal_times) if restaurant.serves_meal_times else "not specified"
-        phones = ", ".join(filter(None, [restaurant.national_phone, restaurant.international_phone])) or "not provided"
+        # STEP 4: Build unified prompt for Gemini to generate answer AND select restaurants
+        # Build web search summary for Gemini
+        web_summary = ""
+        if web_results:
+            web_summary = "\n\n**WEB SEARCH RESULTS (Summarize and integrate these into your response):**\n"
+            for result in web_results:
+                source_emoji = "🔗" if result["source"] == "google" else "💬" if result["source"] == "reddit" else "📝"
+                web_summary += f"{source_emoji} **{result['title']}** ({result['source']}): {result['snippet']}\n"
+            web_summary += "\n**INSTRUCTIONS:** Summarize and integrate these web search results naturally into your response. Use them to provide context, recent reviews, cultural information, and trends."
         
-        # Get video URLs for this restaurant
-        video_urls = get_video_urls_for_restaurant(
-            restaurant_id=restaurant.id,
-            restaurant_name=restaurant.name,
-            google_place_id=getattr(restaurant, "google_place_id", None)
-        )
+        # Build thinking steps
+        thinking_steps = []
+        thinking_steps.append("🔍 **Analyzing your query and understanding what you're looking for...**")
+        if web_results:
+            thinking_steps.append(f"🌐 **Searching web for recent reviews and cultural context...** ✅ Found {len(web_results)} relevant sources")
+        thinking_steps.append(f"🧠 **Reviewing {len(ranked_results)} restaurants and selecting the best matches for your query...**")
+        thinking_section = "\n".join(thinking_steps)
         
-        # Generate match reasons to provide context about WHY this restaurant matches
-        match_reasons = self._generate_match_reasons(top_match, parsed_query)
-        
-        # Build match context string to help LLM understand what matched well
-        match_context_lines = []
-        for reason in match_reasons[:3]:  # Top 3 reasons
-            importance_label = "🔹 Primary match" if reason.importance == "primary" else "🔸 Secondary match" if reason.importance == "secondary" else "• Minor match"
-            match_context_lines.append(f"{importance_label}: {reason.signal.upper()} - User wanted: {reason.query_wanted[:80]} | Restaurant has: {reason.restaurant_has[:80]} (score: {reason.score:.2f})")
-        match_context = "\n".join(match_context_lines) if match_context_lines else "General match across multiple criteria"
-        
-        # Get parking information if available
-        parking_info = ""
-        if hasattr(restaurant, "parking_options") and restaurant.parking_options:
-            try:
-                import ast
-                parking_data = ast.literal_eval(restaurant.parking_options) if isinstance(restaurant.parking_options, str) else restaurant.parking_options
-                parking_details = []
-                if parking_data.get("freeParkingLot"):
-                    parking_details.append("free parking lot")
-                if parking_data.get("paidParkingLot"):
-                    parking_details.append("paid parking lot")
-                if parking_data.get("freeGarageParking"):
-                    parking_details.append("free garage parking")
-                if parking_data.get("freeStreetParking"):
-                    parking_details.append("free street parking")
-                if parking_data.get("valetParking"):
-                    parking_details.append("valet parking")
-                if parking_details:
-                    parking_info = f"Parking: {', '.join(parking_details)}"
-            except:
-                parking_info = f"Parking: {restaurant.parking_options}" if restaurant.parking_options else ""
-        
-        # Check for awards
-        from .fusion import has_award, get_award_level
-        award_info = ""
-        if has_award(restaurant):
-            award_level = get_award_level(restaurant)
-            if award_level >= 1.0:
-                award_info = "🏆 AWARD-WINNING: Gold Award Winner"
-            elif award_level >= 0.8:
-                award_info = "🏆 AWARD-WINNING: Silver Award Winner"
-            elif award_level >= 0.5:
-                award_info = "🏆 AWARD-WINNING: Honorable Mention"
-            else:
-                award_info = "🏆 AWARD-WINNING: Award Recipient"
-            # Extract award details from highlights
-            if restaurant.highlights:
-                award_info += f" - {restaurant.highlights}"
-        
-        # Clean restaurant info - only include user-relevant details (no internal metadata)
-        restaurant_info = f"""
-Restaurant: {restaurant.name}
-Cuisine: {restaurant.cuisine}
-Price: {price_display}
-Location: {restaurant.region}{f", {getattr(restaurant, 'city', None)}" if getattr(restaurant, 'city', None) else ""}
-Address: {getattr(restaurant, "formatted_address", None) or "not provided"}
-Rating: {restaurant.rating}/5.0 ⭐ (out of 5.0)
-{award_info if award_info else ""}
-Features: {features_str}
-Status: {restaurant.business_status or "unknown"} | Open now: {open_status}
-Hours: {restaurant.opening_hours_text or "not provided"}
-Meals served: {meal_times}
-{f"Phone: {phones}" if phones != "not provided" else ""}
-{f"Website: {restaurant.website_uri}" if restaurant.website_uri else ""}
-{f"Map: {restaurant.google_maps_uri}" if restaurant.google_maps_uri else ""}
-{parking_info}
-
-Description: {restaurant.highlights or restaurant.details or restaurant.vibe.vibe_summary}
-Vibe Summary (USE THIS FOR "Vibe at this restaurant" section): {restaurant.vibe.vibe_summary or restaurant.highlights or restaurant.details or "Not specified"}
-{f"Popular menu items: {', '.join(getattr(restaurant, 'top_menu_items', [])[:5])}" if hasattr(restaurant, 'top_menu_items') and getattr(restaurant, 'top_menu_items', []) else ""}
-Atmosphere: {restaurant.vibe.formality} | Noise: {restaurant.vibe.noise_level} | Tags: {', '.join(restaurant.vibe.atmosphere_tags) if restaurant.vibe.atmosphere_tags else 'not specified'}
-
-{f"Photos: {', '.join(restaurant.restaurant_photos_urls[:5])}" if restaurant.restaurant_photos_urls else (f"Photos: {', '.join(restaurant.photos_urls[:5])}" if restaurant.photos_urls else "")}
-{f"Videos: {', '.join(video_urls)}" if video_urls else ""}
-"""
-        
-        # Photos are handled by the formatter - don't mention them in the LLM response
-        # The formatter will display images after the vibe section automatically
-        
-        # Build video note if videos are available
-        video_note = ""
-        if video_urls:
-            video_list = "\n".join([f"  - {url}" for url in video_urls])
-            video_note = f"\nIMPORTANT: This restaurant has {len(video_urls)} video(s) available:\n{video_list}\nYou should mention these videos in your response and include the video links."
-        
-        # Build alternatives information
-        alternatives_info = ""
-        print(f"[DEBUG] Building alternatives_info: {len(alternatives)} alternatives available")
-        if alternatives:
-            alternatives_info = "\n\n**Also Consider (Alternative Options):**\n"
-            for i, alt in enumerate(alternatives, 1):
-                alt_restaurant = alt.restaurant
-                alt_features = ", ".join([k.replace("_", " ").title() for k, v in alt_restaurant.features.items() if v]) or "various features"
-                alt_video_urls = get_video_urls_for_restaurant(
-                    restaurant_id=alt_restaurant.id,
-                    restaurant_name=alt_restaurant.name,
-                    google_place_id=getattr(alt_restaurant, "google_place_id", None)
-                )
-                # Check for awards in alternatives
-                from .fusion import has_award, get_award_level
-                alt_award_info = ""
-                if has_award(alt_restaurant):
-                    alt_award_level = get_award_level(alt_restaurant)
-                    if alt_award_level >= 1.0:
-                        alt_award_info = " | 🏆 Gold Award Winner"
-                    elif alt_award_level >= 0.8:
-                        alt_award_info = " | 🏆 Silver Award Winner"
-                    elif alt_award_level >= 0.5:
-                        alt_award_info = " | 🏆 Honorable Mention"
-                    else:
-                        alt_award_info = " | 🏆 Award Recipient"
-                
-                alt_photo_urls = alt_restaurant.restaurant_photos_urls[:3] if alt_restaurant.restaurant_photos_urls else (alt_restaurant.photos_urls[:3] if alt_restaurant.photos_urls else [])
-                alternatives_info += f"""
-{i}. **{alt_restaurant.name}**
-   - Cuisine: {alt_restaurant.cuisine} | Price: {alt_restaurant.price_level_curated or alt_restaurant.price_level}
-   - Location: {alt_restaurant.region}{f", {getattr(alt_restaurant, 'city', None)}" if getattr(alt_restaurant, 'city', None) else ""}
-   - Rating: {alt_restaurant.rating}/5.0 ⭐{alt_award_info}
-   - Features: {alt_features}
-   - Description: {alt_restaurant.highlights or alt_restaurant.details or alt_restaurant.vibe.vibe_summary[:150]}...
-   - Vibe Summary (USE THIS FOR "Vibe at this restaurant" section): {alt_restaurant.vibe.vibe_summary or alt_restaurant.highlights or alt_restaurant.details or "Not specified"}
-   {f"- Photos: {', '.join(alt_photo_urls)}" if alt_photo_urls else ""}
-   {f"- Videos: {', '.join(alt_video_urls)}" if alt_video_urls else ""}
-"""
-        
-        # CRITICAL: Log if alternatives are being included
-        print(f"[DEBUG] LLM Prompt: Including {len(alternatives)} alternatives in prompt")
-        print(f"[DEBUG] alternatives_info length: {len(alternatives_info)} characters")
-        if alternatives_info:
-            print(f"[DEBUG] ✅ alternatives_info preview: {alternatives_info[:200]}...")
-        if not alternatives:
-            print(f"[DEBUG] ⚠️  WARNING: No alternatives to include! This will result in only one restaurant being shown.")
+        # STEP 5: Unified Gemini call - generates answer AND selects restaurants
+        print(f"[DEBUG] Step 4: Unified Gemini call - generating answer AND selecting restaurants")
         
         user_prompt = f"""
-User Query: {parsed_query.raw_query}
+**THINKING PROCESS (Show this to user at the start of your response):**
+{thinking_section}
 
-**LLM REASONING & CONTEXT (Use this to inform your response):**
-{llm_reasoning if llm_reasoning else "No additional reasoning available."}
+**ENHANCED QUERY ANALYSIS:**
+{enhanced_query_analysis}
 
-**RESTAURANT DATA (Use as supporting examples, but lead with your knowledge):**
-Top Match: {restaurant.name}
-{restaurant_info}
+**USER QUERY:** {parsed_query.raw_query}
 
-Why this restaurant matches (for reference):
-{match_context}
-{video_note}
-{alternatives_info}
+{web_summary}
 
-**CRITICAL: YOU HAVE {len(alternatives)} ALTERNATIVE RESTAURANTS LISTED ABOVE. YOU MUST INCLUDE ALL {len(alternatives)} OF THEM IN YOUR RESPONSE. DO NOT SKIP ANY.**
+**RESTAURANT DATABASE (You have access to ALL restaurants - analyze and select the best matches):**
+You have access to {len(ranked_results)} restaurants in the database. Your task is to:
 
-**IMPORTANT INSTRUCTIONS - STRUCTURED RESPONSE FORMAT:**
-**CRITICAL: You MUST format your response using this exact structure for EACH restaurant:**
+1. **Understand the query**: Based on the enhanced query analysis above, what is the user REALLY looking for?
+2. **CRITICAL - RESTAURANT-SPECIFIC DETECTION**: 
+   - If the query is about a SPECIFIC restaurant (restaurant name mentioned), select ONLY that restaurant - NO alternatives
+   - If the query is GENERAL (cuisine, vibe, food culture, "best X", etc.), select 1 top match + up to 5 alternatives
+3. **Select restaurants** that best match the query:
+   - For "best dessert" → prioritize dessert shops, bakeries, shave ice places
+   - For "luau" → select luau restaurants
+   - For "scenic view" → select restaurants with ocean/mountain views
+   - For specific restaurant → select ONLY that restaurant
+   - Prioritize award-winning restaurants (🏆 GOLD/SILVER AWARD WINNER)
+4. **Generate your answer** using your knowledge + web search results + restaurant data
+5. **Summarize web search results** naturally in your response
 
-For the TOP MATCH, start with:
-## {restaurant.name}
+**ALL AVAILABLE RESTAURANTS ({len(ranked_results)} total):**
+{all_restaurants_formatted}
 
-[2-3 sentences explaining why this restaurant matches the query]
+**RESPONSE FORMAT - STRUCTURED (Same Structure, More Conversational Content):**
+
+**1. OPENING (Natural Context - Optional):**
+You can start with a conversational opening that shows understanding:
+- "Maui offers some of the most [X] in Hawaii..."
+- "Since you're looking for [X], here are the best options..."
+- "I've found [X] restaurants that match what you're looking for..."
+
+**2. ORGANIZATION (Categorize when you have multiple restaurants - Optional):**
+You can group restaurants by type/vibe when appropriate:
+- "Iconic Oceanfront Fine Dining"
+- "Casual Beachside"
+- "Panoramic Upcountry Views"
+- "Local Favorites"
+- "Upscale Special Occasion"
+- "Dessert Shops & Bakeries"
+- etc.
+
+**3. FOR EACH RESTAURANT (STRUCTURED FORMAT - Same as Before):**
+
+## Restaurant Name
+
+[2-4 sentences in conversational style explaining why this restaurant matches. Include:
+- What makes it special or notable
+- Specific dishes/items to try ("Must-Try: X" or "The Y is a standout...")
+- Why it fits the query
+- Any cultural or contextual significance
+- Write conversationally, like Gemini, but keep it concise]
 
 **Good for:**
-[On a SINGLE LINE, list menu items from "Popular menu items" field if available, or mention cuisine specialties. Format as comma-separated list on one line, e.g., "Authentic Curries, Vegetarian Options, Tandoori Dishes". Do NOT use bullet points.]
+[On a SINGLE LINE, list menu items, dishes, or specialties this restaurant is known for. If menu items are provided in the restaurant data (in "Popular menu items" field), use those exactly. If not, mention the cuisine type and what that cuisine typically offers. Format as a simple comma-separated list on one line, e.g., "Authentic Curries, Vegetarian Options, Tandoori Dishes" or "The Polynesian Black Pearl, Fresh Catch of the Day, Hawaiian Specialties". Do NOT use bullet points or line breaks.]
 
 **Vibe at this restaurant:**
-[CRITICAL: Use the EXACT vibe_summary text from the restaurant data (restaurants.json). The vibe_summary field contains the authentic description of the restaurant's atmosphere, vibe, and dining experience. Use it directly - do NOT paraphrase or create your own description. If vibe_summary is provided, use it verbatim or with minimal editing to preserve its authentic character.]
+[CRITICAL: Use the EXACT vibe_summary text from the restaurant data (restaurants.json). Do NOT paraphrase or summarize - use the vibe_summary field directly as it contains the authentic description of the restaurant's atmosphere and vibe. If vibe_summary is provided in the restaurant data, use it verbatim or with minimal editing to maintain its authentic character. DO NOT mention photos or images - they will be displayed automatically after this section.]
 
 **Features:**
-[On a SINGLE LINE, list features from the Features field as comma-separated list. If none, say "Not specified".]
+[On a SINGLE LINE, list the features from the restaurant data as a comma-separated list (e.g., "Outdoor Seating, Vegetarian Options, Wheelchair Accessible"). If no features, say "Not specified". Do NOT use bullet points.]
 
 **Videos:**
-[List video URLs if available, one per line: "- [url](url)"]
+[List video URLs if available, one per line with markdown links: "- [Video Title](url)". If no videos, say "No videos available"]
 
-Then, for EACH alternative restaurant, use the SAME structure:
-## Alternative Restaurant Name
+**4. CLOSING (Helpful Follow-up - Optional):**
+You can end with a natural question or offer additional help:
+- "Are you looking for a reservation for a specific date?"
+- "Would you like recommendations for [related topic]?"
+- "Are you staying in a specific part of Maui?"
 
-[2-3 sentences about this alternative]
+**CRITICAL REMINDER**: 
+- Select and include **up to 6 restaurants total** (1 top match + up to 5 alternatives)
+- For queries about food culture (like "best dessert", "famous dishes"), showing multiple diverse options is essential
+- **SELECT DIVERSE RESTAURANTS** - Don't pick the same restaurants for every query. Vary based on query intent.
+- **DO NOT include the same restaurant twice** - if you select a restaurant as top match, don't include it in alternatives
 
-**Good for:**
-[On a SINGLE LINE, menu items or cuisine specialties as comma-separated list]
+**GEMINI-STYLE CONTENT GUIDELINES:**
 
-**Vibe at this restaurant:**
-[CRITICAL: Use the EXACT vibe_summary text from the restaurant data (restaurants.json). Use it directly - do NOT paraphrase.]
+1. **CONVERSATIONAL FLOW**: Write naturally, like you're talking to a friend. Use transitions: "While famous for X, Y also offers...", "If you're looking for something different...", "For a different vibe..."
 
-**Features:**
-[On a SINGLE LINE, features list as comma-separated]
+2. **KNOWLEDGE-FIRST APPROACH**: 
+   - Lead with what you know about the topic (Maui/Hawaii food culture, famous spots, cultural context)
+   - Use restaurant data to validate and provide specific details
+   - Use LLM reasoning and web search results to enhance your knowledge-based response
 
-**Videos:**
-[Video links if available]
+3. **NATURAL OPENING**: Start with context that shows understanding: "Maui offers some of the most [X]...", "Since you're looking for [X]..."
 
-**CRITICAL REMINDER**: You have {len(alternatives)} alternative restaurants listed above. You MUST include ALL {len(alternatives)} of them in your response, each in the structured format shown above. Do NOT skip any alternatives. For queries about food culture (like "best dessert", "famous dishes"), showing multiple diverse options is essential - users want to see variety.
+4. **CATEGORIZATION**: When you have multiple restaurants, group them by type/vibe (e.g., "Iconic Oceanfront Fine Dining", "Casual Beachside", "Panoramic Upcountry Views")
 
-**CONTENT GUIDELINES:**
-1. **USE LLM REASONING**: The "LLM REASONING & CONTEXT" section above contains insights from analyzing this query. Use these insights to provide a more informed, contextually aware response. If the reasoning suggests certain restaurants are better fits or identifies cultural context, incorporate that into your response.
-2. **START WITH YOUR EXPERTISE**: For general questions, begin with your knowledge about the topic, then connect to restaurants using the structured format above. Use the LLM reasoning to enhance your knowledge-based response.
-3. **COMBINE KNOWLEDGE + DATA**: Use your general knowledge about Maui/Hawaii food culture AND the restaurant data together. The LLM reasoning helps bridge these - use it to provide richer context.
-4. **Be accurate**: Only claim features/menu items that are actually in the restaurant data provided.
-5. **CRITICAL - ALTERNATIVES**: You MUST include ALL {len(alternatives)} alternatives listed above, each in the structured format. DO NOT skip any alternatives. For food culture queries (like "best dessert", "famous dishes"), showing multiple options is especially important - users want to see diverse recommendations. Include every single alternative restaurant provided.
-6. **Menu items**: Use the "Popular menu items" field if available, otherwise mention cuisine type and typical dishes based on your knowledge of that cuisine.
-7. **Vibe**: CRITICAL - Use the EXACT vibe_summary text from restaurants.json. Do NOT paraphrase or summarize. The vibe_summary field contains the authentic description of the restaurant's atmosphere and vibe - use it directly from the restaurant data provided.
-8. **Features**: List only the features that are marked as True in the Features field, formatted as comma-separated list.
-9. **Videos**: If video URLs are provided, list them one per line with markdown links. If none, say "No videos available".
-10. **PHOTOS/IMAGES**: DO NOT mention photos, images, or photo URLs anywhere in your response. Photos will be displayed automatically by the formatter after the vibe section. Do not include text like "You can see photos here" or photo URLs in your explanation.
-11. **KNOWLEDGE-FIRST APPROACH WITH REASONING**: 
-   - USE YOUR KNOWLEDGE as the PRIMARY source. You are an expert on Maui, Hawaii, food culture, and dining experiences.
-   - Use the LLM reasoning insights to enhance your knowledge-based response with better context.
-   - For GENERAL questions: Lead with your knowledge (enhanced by reasoning insights), then use the structured format for restaurants.
-   - For SPECIFIC restaurants: Use the provided restaurant data accurately, but use your knowledge + reasoning for richer context.
-12. **HANDLING MISSING DATA**: 
-   - If menu items aren't in data, mention cuisine type and typical dishes for that cuisine based on your knowledge.
-   - If features aren't available, say "Not specified".
-   - If vibe_summary isn't available, use highlights or description. But if vibe_summary IS available, you MUST use it directly - do not substitute with highlights or description.
-13. **CRITICAL**: You MUST use the exact structured format shown above for EVERY restaurant (top match AND all alternatives). Do not use paragraph format.
+5. **SPECIFIC RECOMMENDATIONS**: 
+   - Use "Must-Try: [specific dish]" format
+   - Mention specific dishes, experiences, cultural significance
+   - Use "Popular menu items" from data if available, otherwise use your knowledge
+
+6. **USE WEB SEARCH & REASONING**: 
+   - Incorporate web search results naturally: "Recent reviews mention..." or "According to recent discussions..."
+   - Use LLM reasoning insights to understand cultural context and what really matters
+
+7. **ACCURACY**: Only claim features/menu items that are in the restaurant data, but use your knowledge for context and recommendations
+
+8. **CRITICAL - SELECT AND INCLUDE RESTAURANTS**: You MUST select and include up to 6 restaurants total (1 top match + up to 5 alternatives), each in the conversational format above. **DO NOT include the same restaurant twice - if you select a restaurant as top match, don't include it in alternatives.**
+
+9. **VIBE SUMMARY**: CRITICAL - Use the EXACT vibe_summary text from restaurants.json verbatim. Do NOT paraphrase. This contains the authentic description of the restaurant's atmosphere and vibe.
+
+10. **FEATURES**: List only features marked as True in the Features field, formatted as comma-separated list. If none, say "Not specified".
+
+11. **VIDEOS**: If video URLs are provided, list them one per line with markdown links. If none, say "No videos available".
+
+12. **PHOTOS**: DO NOT mention photos or images - they will be displayed automatically by the formatter.
+
+13. **HELPFUL CLOSING**: End with a natural question or offer additional help: "Are you looking for X?" or "Would you like recommendations for Y?"
+
+14. **WRITE LIKE GEMINI**: Be conversational, show your thinking naturally, organize by categories when appropriate, provide specific recommendations, and end with helpful follow-ups.
 """
+        
+        # Note: We use manual web search (Google Custom Search API) which is already integrated.
+        # Web search results are passed to Gemini in the prompt (web_context).
+        # Gemini's native web search tool is not available in the current SDK format.
         
         response = await self.client.chat.completions.create(
             model=self.model,
@@ -831,17 +1028,22 @@ Then, for EACH alternative restaurant, use the SAME structure:
             # Higher temperature for more natural, conversational, human-like tone
             temperature=0.4,
             # Allow much longer, richer answers (top + up to 9 alternatives)
-            max_tokens=3000,  # Increased to accommodate photo URLs and more detailed responses
+            max_tokens=10000,  # Increased to prevent cutting midway
         )
 
         explanation = response.choices[0].message["content"].strip()
         
+        # Gemini has generated the answer AND selected restaurants in the explanation
+        # The formatter will parse the explanation to extract restaurant names and inject images
+        # Return a dummy top_match (formatter will extract actual restaurants from explanation)
+        dummy_top_match = self._scored_to_match(ranked_results[0]) if ranked_results else None
+        
         return AnaResponse(
             success=True,
-            top_match=self._scored_to_match(top_match),
-            alternatives=[self._scored_to_match(alt) for alt in alternatives],
-            match_reasons=match_reasons,  # Use the match_reasons we already generated
+            top_match=dummy_top_match,
+            alternatives=[],  # Gemini selects restaurants in the explanation - formatter will handle image injection
+            match_reasons=[],  # No ranking, so no match reasons
             explanation=explanation,
-            confidence=self._determine_confidence(top_match.final_score, len(ranked_results)),
+            confidence="high",  # Gemini handles selection, so confidence is high
         )
 

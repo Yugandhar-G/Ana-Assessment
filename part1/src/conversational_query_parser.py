@@ -11,7 +11,7 @@ class ConversationalQueryParser:
     def __init__(self, client: AsyncGeminiClient | None = None):
         self.client = client or AsyncGeminiClient(
             api_key=os.getenv("GEMINI_API_KEY"),
-            default_chat_model=os.getenv("GEMINI_CHAT_MODEL", "gemini-2.0-flash"),
+            default_chat_model=os.getenv("GEMINI_CHAT_MODEL", "gemini-3-flash-preview"),
         )
     
     async def combine_query_and_follow_ups(

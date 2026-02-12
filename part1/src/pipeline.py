@@ -39,7 +39,7 @@ class AnaVibeSearch:
         
         self.client = client or AsyncGeminiClient(
             api_key=os.getenv("GEMINI_API_KEY"),
-            default_chat_model=os.getenv("GEMINI_CHAT_MODEL", "gemini-2.0-flash"),
+            default_chat_model=os.getenv("GEMINI_CHAT_MODEL", "gemini-3-flash-preview"),
             default_embedding_model=embedding_model,
         )
         self.use_llm = use_llm
@@ -348,186 +348,59 @@ class AnaVibeSearch:
         logger.info(f"   Query type: cuisine_explicit={cuisine_explicitly_requested}, general={is_general_query}, features={feature_count}")
         logger.info(f"   Retrieving {n_results} candidates from vector search")
 
-        # Enhance semantic query to better capture cuisine in embeddings
-        # This is critical since ChromaDB doesn't support $contains for metadata filtering
-        enhanced_semantic_query = self._enhance_semantic_query_for_cuisine(parsed_query)
-        if enhanced_semantic_query != parsed_query.semantic_query:
-            logger.info(f"   Enhanced semantic query for cuisine: '{enhanced_semantic_query[:100]}...'")
+        # NO RANKING: Pass all restaurant data directly to Gemini for complete analysis
+        logger.info(f"🤖 GEMINI-FIRST ARCHITECTURE: No ranking, Gemini handles query parsing, answer generation, and restaurant selection")
+        logger.info(f"   Total restaurants in database: {len(self.restaurants)}")
         
-        # Get candidates from vector search (vibe-based, with enhanced cuisine emphasis)
-        logger.info(f"🔍 Vector Search: query='{enhanced_semantic_query}', n_results={n_results}")
-        logger.info(f"   Using embedding model: {self.vector_store.embedding_model}")
-        logger.info(f"   Vector store collection: {self.vector_store.collection.name}, count: {self.vector_store.collection.count()}")
-        vector_results = await self.vector_store.search(
-            query=enhanced_semantic_query,
-            n_results=n_results,
-        )
-        logger.info(f"   Found {len(vector_results)} vector search results")
-        if vector_results:
-            logger.info(f"   Top 3 vector matches:")
-            for i, result in enumerate(vector_results[:3]):
-                restaurant = self._restaurant_lookup.get(result["id"])
-                if restaurant:
-                    logger.info(f"     [{i+1}] {restaurant.name} (similarity: {result.get('similarity', 0):.3f})")
-        
-        candidates_with_vibe_scores = []
-        
-        if exact_restaurant:
-            # CRITICAL: When exact restaurant name is found, prioritize it heavily
-            # Add it first with very high vibe score to ensure it ranks highest
-            found_in_results = False
-            for result in vector_results:
-                if result["id"] == exact_restaurant.id:
-                    found_in_results = True
-                    # Use normalized similarity if found, but boost it significantly
-                    similarity = result.get("similarity", 0.9)
-                    normalized_vibe_score = max(0.0, min(1.0, (similarity + 1) / 2))
-                    # Boost exact match to ensure it's always top result
-                    normalized_vibe_score = max(0.98, normalized_vibe_score)
-                    candidates_with_vibe_scores.append((exact_restaurant, normalized_vibe_score))
-                    break
-            
-            if not found_in_results:
-                # If not in vector results, still add with very high score
-                candidates_with_vibe_scores.append((exact_restaurant, 0.98))
-        
-        for result in vector_results:
-            restaurant = self._restaurant_lookup.get(result["id"])
-            if restaurant:
-                if exact_restaurant and restaurant.id == exact_restaurant.id:
+        # Apply ONLY basic filters (business status, must_not constraints) - no ranking/scoring
+        filtered_restaurants = []
+        for restaurant in self.restaurants:
+            # Only filter out closed restaurants and must_not constraints
+            if restaurant.business_status and restaurant.business_status != "OPERATIONAL":
+                continue
+            # Check must_not constraints
+            if parsed_query.must_not.formality and restaurant.vibe and restaurant.vibe.formality:
+                if restaurant.vibe.formality.lower() in [f.lower() for f in parsed_query.must_not.formality]:
                     continue
-                # Normalize similarity from [-1, 1] to [0, 1] to match vibe_score constraint
-                similarity = result["similarity"]
-                normalized_vibe_score = max(0.0, min(1.0, (similarity + 1) / 2))
-                candidates_with_vibe_scores.append((restaurant, normalized_vibe_score))
+            if parsed_query.must_not.price and restaurant.price_level:
+                if restaurant.price_level in parsed_query.must_not.price:
+                    continue
+            if parsed_query.must_not.cuisine and restaurant.cuisine:
+                restaurant_cuisine_lower = restaurant.cuisine.lower()
+                for excluded_cuisine in parsed_query.must_not.cuisine:
+                    if excluded_cuisine.lower() in restaurant_cuisine_lower:
+                        continue
+            filtered_restaurants.append(restaurant)
         
-        logger.info(f"\n🔍 Hard Filtering: {len(candidates_with_vibe_scores)} candidates before filtering")
-        filtered_candidates = []
-        filtered_out = []
-        for restaurant, vibe_score in candidates_with_vibe_scores:
-            # If this is an exact restaurant match, bypass hard filters (except business status)
-            # Exact matches should always be included regardless of location/cuisine filters
-            is_exact_match = (exact_restaurant and restaurant.id == exact_restaurant.id)
-            
-            if is_exact_match:
-                # Only check business status for exact matches, skip other filters
-                if not restaurant.business_status or restaurant.business_status == "OPERATIONAL":
-                    filtered_candidates.append((restaurant, vibe_score))
-                    logger.debug(f"✅ EXACT MATCH (bypass filter): {restaurant.name}")
-            elif self.hard_filter._passes_filters(restaurant, parsed_query):
-                filtered_candidates.append((restaurant, vibe_score))
-            else:
-                filtered_out.append(restaurant.name)
+        logger.info(f"   After basic filtering: {len(filtered_restaurants)} restaurants available for Gemini")
         
-        logger.info(f"   ✅ Passed filter: {len(filtered_candidates)} restaurants")
-        if filtered_out:
-            logger.info(f"   ❌ Filtered out: {len(filtered_out)} restaurants")
-            if len(filtered_out) <= 5:
-                logger.info(f"      {', '.join(filtered_out)}")
-        
-        if not filtered_candidates:
-            # Provide detailed error message with debugging info
-            error_details = []
-            error_details.append(f"Query: '{parsed_query.raw_query}'")
-            error_details.append(f"Vector search returned {len(vector_results)} results")
-            if vector_results:
-                similarities = [f"{r.get('similarity', 0):.3f}" for r in vector_results[:3]]
-                error_details.append(f"Top 3 vector matches had similarities: {', '.join(similarities)}")
-            error_details.append(f"After filtering, {len(filtered_candidates)} restaurants passed")
-            if filtered_out:
-                error_details.append(f"Filtered out: {', '.join(filtered_out[:10])}")
-            if parsed_query.preferences.cuisine:
-                error_details.append(f"Requested cuisine: {parsed_query.preferences.cuisine}")
-            if parsed_query.location:
-                error_details.append(f"Requested location: {parsed_query.location}")
-            
-            logger.error(f"❌ NO RESULTS: {' | '.join(error_details)}")
-            
-            return AnaResponse(
-                success=False,
-                explanation="No restaurants match your criteria after filtering. Try relaxing some constraints?",
-                confidence="low",
-                caveats=["All restaurants were filtered out by hard constraints"] + error_details,
+        # Create simple list of restaurants (no scoring/ranking) - Gemini will do everything
+        from .fusion import ScoredRestaurant
+        # Just wrap restaurants in ScoredRestaurant for compatibility, but with neutral scores
+        scored_results = [
+            ScoredRestaurant(
+                restaurant=restaurant,
+                vibe_score=0.5,
+                cuisine_score=0.5,
+                price_score=0.5,
+                feature_score=0.5,
+                final_score=0.5,
             )
+            for restaurant in filtered_restaurants
+        ]
         
-        scored_results = await self._score_candidates(filtered_candidates, parsed_query)
+        # Log award winners for reference (but no ranking)
+        from .fusion import has_award, get_award_level
+        award_winners = [r for r in scored_results if has_award(r.restaurant)]
+        if award_winners:
+            logger.info(f"🏆 Found {len(award_winners)} award-winning restaurants (Gemini will prioritize):")
+            for r in award_winners[:10]:
+                award_level = get_award_level(r.restaurant)
+                logger.info(f"   - {r.restaurant.name} (award_level={award_level:.2f})")
         
-        # Log all scores before ranking
-        logger.info(f"\n{'='*80}")
-        logger.info(f"SCORING RESULTS (before ranking) - Query: '{parsed_query.raw_query}'")
-        logger.info(f"Query Weights: vibe={parsed_query.weights.vibe:.2f}, cuisine={parsed_query.weights.cuisine:.2f}, price={parsed_query.weights.price:.2f}, features={parsed_query.weights.features:.2f}")
-        logger.info(f"Preferred Cuisine: {parsed_query.preferences.cuisine}")
-        logger.info(f"{'='*80}")
-        
-        for i, scored in enumerate(scored_results[:10]):  # Log top 10
-            logger.info(f"\n[{i+1}] {scored.restaurant.name}")
-            logger.info(f"    Cuisine: {scored.restaurant.cuisine}")
-            logger.info(f"    Scores: vibe={scored.vibe_score:.3f}, cuisine={scored.cuisine_score:.3f}, price={scored.price_score:.3f}, feature={scored.feature_score:.3f}")
-            logger.info(f"    Final Score: {scored.final_score:.3f}")
-        
-        # CRITICAL: Boost exact restaurant name matches to ensure they rank highest
-        if exact_restaurant:
-            for scored in scored_results:
-                if scored.restaurant.id == exact_restaurant.id:
-                    logger.info(f"\n🎯 Exact match boost applied to: {scored.restaurant.name}")
-                    old_score = scored.final_score
-                    # Massive boost for exact matches - ensure it's always #1
-                    scored.final_score = min(1.0, scored.final_score + 0.5)
-                    scored.vibe_score = min(1.0, scored.vibe_score + 0.3)
-                    logger.info(f"    Score: {old_score:.3f} → {scored.final_score:.3f}")
-                    break
-        
-        # Use award-priority ranking for top 10 results (with primary cuisine prioritization)
-        ranked_results = self.fusion.rank_with_award_priority(scored_results, top_n=10, parsed_query=parsed_query)
-        
-        # Log top ranked results
-        logger.info(f"\n{'='*80}")
-        logger.info(f"TOP RANKED RESULTS (after fusion and ranking)")
-        logger.info(f"{'='*80}")
-        for i, scored in enumerate(ranked_results[:5]):  # Log top 5
-            logger.info(f"\n🏆 [{i+1}] {scored.restaurant.name} (ID: {scored.restaurant.id})")
-            logger.info(f"    Cuisine: {scored.restaurant.cuisine} | Price: {scored.restaurant.price_level}")
-            logger.info(f"    Individual Scores:")
-            logger.info(f"      • Vibe Score:     {scored.vibe_score:.4f} (weight: {parsed_query.weights.vibe:.2f}) → contribution: {scored.vibe_score * parsed_query.weights.vibe:.4f}")
-            logger.info(f"      • Cuisine Score:  {scored.cuisine_score:.4f} (weight: {parsed_query.weights.cuisine:.2f}) → contribution: {scored.cuisine_score * parsed_query.weights.cuisine:.4f}")
-            logger.info(f"      • Price Score:    {scored.price_score:.4f} (weight: {parsed_query.weights.price:.2f}) → contribution: {scored.price_score * parsed_query.weights.price:.4f}")
-            logger.info(f"      • Feature Score:  {scored.feature_score:.4f} (weight: {parsed_query.weights.features:.2f}) → contribution: {scored.feature_score * parsed_query.weights.features:.4f}")
-            logger.info(f"    ⭐ Final Score: {scored.final_score:.4f}")
-            logger.info(f"    Vibe Summary: {scored.restaurant.vibe.vibe_summary[:100]}...")
-            
-            # Show why this restaurant ranked high
-            if i == 0 and ranked_results:
-                top = scored
-                logger.info(f"\n📈 WHY THIS IS TOP RESULT:")
-                if top.vibe_score > 0.8:
-                    logger.info(f"   ✓ High vibe score ({top.vibe_score:.3f}) - strong semantic match")
-                if top.cuisine_score > 0.7:
-                    logger.info(f"   ✓ High cuisine score ({top.cuisine_score:.3f}) - cuisine matches")
-                elif parsed_query.preferences.cuisine and top.cuisine_score < 0.3:
-                    logger.info(f"   ⚠️  LOW cuisine score ({top.cuisine_score:.3f}) but still ranked #1 - check penalty!")
-                    logger.info(f"      Requested: {parsed_query.preferences.cuisine}, Got: {top.restaurant.cuisine}")
-                if top.price_score > 0.8:
-                    logger.info(f"   ✓ High price score ({top.price_score:.3f}) - price matches")
-                if top.feature_score > 0.8:
-                    logger.info(f"   ✓ High feature score ({top.feature_score:.3f}) - features match")
-        logger.info(f"{'='*80}\n")
-        
-        # Fast path: skip LLM to reduce latency (no natural-language explanation)
-        if not self.use_llm:
-            top_match = ranked_results[0]
-            alternatives = self.response_generator._select_relevant_alternatives(ranked_results, top_match, parsed_query)
-            return AnaResponse(
-                success=True,
-                top_match=self.response_generator._scored_to_match(top_match),
-                alternatives=[self.response_generator._scored_to_match(a) for a in alternatives],
-                match_reasons=self.response_generator._generate_match_reasons(
-                    top_match, parsed_query
-                ),
-                explanation="Low-latency mode: returned top matches without LLM-generated narrative.",
-                confidence=self.response_generator._determine_boosted_confidence(
-                    top_match.final_score, len(ranked_results), parsed_query
-                ),
-            )
+        # NO RANKING - Pass all restaurants to Gemini for selection
+        ranked_results = scored_results  # Just use all restaurants, no ranking
+        logger.info(f"✅ Passing {len(ranked_results)} restaurants to Gemini (no ranking/scoring)")
 
         return await self.response_generator.generate(parsed_query, ranked_results)
     
@@ -579,101 +452,68 @@ class AnaVibeSearch:
                 logger.info(f"   Requested: {parsed_query.preferences.cuisine}, Restaurant: {exact_restaurant.cuisine}")
                 exact_restaurant = None  # Don't treat as exact match - let it go through normal filtering
 
-        feature_count = (
-            len(parsed_query.preferences.features) +
-            len(parsed_query.preferences.atmosphere)
-        )
-
-        # Increase n_results when cuisine is explicitly requested
-        cuisine_explicitly_requested = (
-            parsed_query.preferences.cuisine and 
-            parsed_query.weights.cuisine >= 0.3
-        )
+        # SKIP RAG: Pass all restaurant data directly to Gemini for analysis
+        logger.info(f"🤖 GEMINI DIRECT ACCESS (Streaming): Skipping RAG, passing all restaurant data to Gemini")
+        logger.info(f"   Total restaurants in database: {len(self.restaurants)}")
         
-        if feature_count >= 2:
-            n_results = 40 if cuisine_explicitly_requested else 30
-        else:
-            n_results = 30 if cuisine_explicitly_requested else 20
-
-        # Enhance semantic query to better capture cuisine in embeddings
-        enhanced_semantic_query = self._enhance_semantic_query_for_cuisine(parsed_query)
-        if enhanced_semantic_query != parsed_query.semantic_query:
-            logger.info(f"   Enhanced semantic query for cuisine: '{enhanced_semantic_query[:100]}...'")
-
-        # Get candidates from vector search (vibe-based, with enhanced cuisine emphasis)
-        logger.info(f"🔍 Vector Search: query='{enhanced_semantic_query}', n_results={n_results}")
-        vector_results = await self.vector_store.search(
-            query=enhanced_semantic_query,
-            n_results=n_results,
-        )
-        logger.info(f"   Found {len(vector_results)} vector search results")
-        if vector_results:
-            logger.info(f"   Top 3 vector matches:")
-            for i, result in enumerate(vector_results[:3]):
-                restaurant = self._restaurant_lookup.get(result["id"])
-                if restaurant:
-                    logger.info(f"     [{i+1}] {restaurant.name} (similarity: {result.get('similarity', 0):.3f})")
-        
-        candidates_with_vibe_scores = []
-        
-        if exact_restaurant:
-            # CRITICAL: When exact restaurant name is found, prioritize it heavily
-            # Add it first with very high vibe score to ensure it ranks highest
-            found_in_results = False
-            for result in vector_results:
-                if result["id"] == exact_restaurant.id:
-                    found_in_results = True
-                    # Use normalized similarity if found, but boost it significantly
-                    similarity = result.get("similarity", 0.9)
-                    normalized_vibe_score = max(0.0, min(1.0, (similarity + 1) / 2))
-                    # Boost exact match to ensure it's always top result
-                    normalized_vibe_score = max(0.98, normalized_vibe_score)
-                    candidates_with_vibe_scores.append((exact_restaurant, normalized_vibe_score))
-                    break
-            
-            if not found_in_results:
-                # If not in vector results, still add with very high score
-                candidates_with_vibe_scores.append((exact_restaurant, 0.98))
-        
-        for result in vector_results:
-            restaurant = self._restaurant_lookup.get(result["id"])
-            if restaurant:
-                if exact_restaurant and restaurant.id == exact_restaurant.id:
+        # Apply basic filters (business status, must_not constraints) but keep all others
+        filtered_restaurants = []
+        for restaurant in self.restaurants:
+            # Only filter out closed restaurants and must_not constraints
+            if restaurant.business_status and restaurant.business_status != "OPERATIONAL":
+                continue
+            # Check must_not constraints
+            if parsed_query.must_not.formality and restaurant.vibe and restaurant.vibe.formality:
+                if restaurant.vibe.formality.lower() in [f.lower() for f in parsed_query.must_not.formality]:
                     continue
-                # Normalize similarity from [-1, 1] to [0, 1] to match vibe_score constraint
-                similarity = result["similarity"]
-                normalized_vibe_score = max(0.0, min(1.0, (similarity + 1) / 2))
-                candidates_with_vibe_scores.append((restaurant, normalized_vibe_score))
+            if parsed_query.must_not.price and restaurant.price_level:
+                if restaurant.price_level in parsed_query.must_not.price:
+                    continue
+            if parsed_query.must_not.cuisine and restaurant.cuisine:
+                restaurant_cuisine_lower = restaurant.cuisine.lower()
+                for excluded_cuisine in parsed_query.must_not.cuisine:
+                    if excluded_cuisine.lower() in restaurant_cuisine_lower:
+                        continue
+            filtered_restaurants.append(restaurant)
         
-        logger.info(f"\n🔍 Hard Filtering: {len(candidates_with_vibe_scores)} candidates before filtering")
-        filtered_candidates = []
-        filtered_out = []
-        for restaurant, vibe_score in candidates_with_vibe_scores:
-            # If this is an exact restaurant match, bypass hard filters (except business status)
-            # Exact matches should always be included regardless of location/cuisine filters
-            is_exact_match = (exact_restaurant and restaurant.id == exact_restaurant.id)
+        logger.info(f"   After basic filtering: {len(filtered_restaurants)} restaurants available for Gemini")
+        
+        # Create dummy scored results - Gemini will do the actual selection
+        # BUT: Prioritize award-winning restaurants by boosting their scores
+        from .fusion import ScoredRestaurant, has_award, get_award_level
+        dummy_scored_results = []
+        for restaurant in filtered_restaurants:
+            # Base neutral scores
+            base_score = 0.5
             
-            if is_exact_match:
-                # Only check business status for exact matches, skip other filters
-                if not restaurant.business_status or restaurant.business_status == "OPERATIONAL":
-                    filtered_candidates.append((restaurant, vibe_score))
-                    logger.debug(f"✅ EXACT MATCH (bypass filter): {restaurant.name}")
-            elif self.hard_filter._passes_filters(restaurant, parsed_query):
-                filtered_candidates.append((restaurant, vibe_score))
-            else:
-                filtered_out.append(restaurant.name)
+            # BOOST award-winning restaurants significantly
+            if has_award(restaurant):
+                award_level = get_award_level(restaurant)
+                # Award boost: Gold = +0.4, Silver = +0.3, Honorable = +0.2, Other = +0.1
+                award_boost = 0.4 * award_level
+                base_score = min(1.0, 0.5 + award_boost)
+            
+            # Create a ScoredRestaurant with boosted scores for award winners
+            dummy_scored = ScoredRestaurant(
+                restaurant=restaurant,
+                vibe_score=base_score,
+                cuisine_score=base_score,
+                price_score=base_score,
+                feature_score=base_score,
+                final_score=base_score,  # Award winners get higher scores
+            )
+            dummy_scored_results.append(dummy_scored)
         
-        logger.info(f"   ✅ Passed filter: {len(filtered_candidates)} restaurants")
-        if filtered_out:
-            logger.info(f"   ❌ Filtered out: {len(filtered_out)} restaurants")
-            if len(filtered_out) <= 5:
-                logger.info(f"      {', '.join(filtered_out)}")
+        # Sort by final_score (award winners will be at the top) before passing to Gemini
+        scored_results = sorted(dummy_scored_results, key=lambda x: x.final_score, reverse=True)
         
-        if not filtered_candidates:
-            logger.warning(f"⚠️  No restaurants passed filtering for query: '{parsed_query.raw_query}'")
-            return parsed_query, []
-        
-        scored_results = await self._score_candidates(filtered_candidates, parsed_query)
+        # Log award winners for debugging
+        award_winners = [r for r in scored_results if has_award(r.restaurant)]
+        if award_winners:
+            logger.info(f"🏆 Found {len(award_winners)} award-winning restaurants (prioritized):")
+            for r in award_winners[:10]:
+                award_level = get_award_level(r.restaurant)
+                logger.info(f"   - {r.restaurant.name} (award_level={award_level:.2f}, final_score={r.final_score:.3f})")
         
         # Log scores for streaming endpoint too
         logger.info(f"\n{'='*80}")

@@ -4,7 +4,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Optional
 import json
@@ -33,11 +33,12 @@ except ImportError:
         structured_search_func = None
 
 # Load environment variables
+# Use override=True to ensure .env file values override any existing environment variables
 env_path = Path(__file__).parent.parent / ".env"
 if env_path.exists():
-    load_dotenv(env_path)
+    load_dotenv(env_path, override=True)
 else:
-    load_dotenv()
+    load_dotenv(override=True)
 
 # Global search instance
 search_instance: Optional[AnaVibeSearch] = None
@@ -78,6 +79,30 @@ app.add_middleware(
 
 class SearchRequest(BaseModel):
     query: str
+
+
+@app.get("/")
+async def root():
+    """Root endpoint - redirects to API documentation."""
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/api")
+async def api_info():
+    """API information endpoint."""
+    return {
+        "name": "Ana AI Restaurant Search API",
+        "version": "1.0.0",
+        "description": "Culinary assistant for Hawaii that combines RAG with LLM for restaurant recommendations",
+        "endpoints": {
+            "POST /api/search": "Basic search endpoint",
+            "POST /api/search/structured": "Structured search with enriched data",
+            "POST /api/search/stream": "Streaming search endpoint",
+            "GET /api/health": "Health check",
+            "GET /docs": "Interactive API documentation"
+        },
+        "documentation": "/docs"
+    }
 
 
 @app.post("/api/search")

@@ -214,7 +214,7 @@ def make_example_handler(example: str):
 
 
 # Create Gradio interface with enhanced UI
-with gr.Blocks(title="Ana AI Restaurant Search") as demo:
+with gr.Blocks(title="Ana AI Restaurant Search", theme=gr.themes.Soft()) as demo:
     gr.Markdown(
         """
         # 🍽️ Ana AI Restaurant Search
@@ -337,4 +337,4 @@ if __name__ == "__main__":
     print(f"Starting Gradio app on port {free_port}")
     
     demo.queue()
-    demo.launch(server_name="0.0.0.0", server_port=free_port, share=True, theme=gr.themes.Soft())
+    demo.launch(server_name="0.0.0.0", server_port=free_port, share=True)

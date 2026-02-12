@@ -14,9 +14,9 @@ class StreamingResponseGenerator:
     def __init__(self, client: AsyncGeminiClient | None = None, model: str | None = None):
         self.client = client or AsyncGeminiClient(
             api_key=os.getenv("GEMINI_API_KEY"),
-            default_chat_model=os.getenv("GEMINI_CHAT_MODEL", "gemini-2.0-flash"),
+            default_chat_model=os.getenv("GEMINI_CHAT_MODEL", "gemini-3-flash-preview"),
         )
-        self.model = model or os.getenv("GEMINI_CHAT_MODEL", "gemini-2.0-flash")
+        self.model = model or os.getenv("GEMINI_CHAT_MODEL", "gemini-3-flash-preview")
         self.system_prompt = self._load_prompt()
     
     def _load_prompt(self) -> str:
@@ -616,7 +616,7 @@ Then, for EACH alternative restaurant, use the SAME structure:
                 ],
                 temperature=0.4,  # Higher temperature for more natural, conversational, human-like tone
                 # Allow much longer, richer answers for streaming as well
-                max_tokens=3000,  # Increased to accommodate photo URLs and more detailed responses
+                max_tokens=8000,  # Increased to match non-streaming generator
             ):
                 yield {
                     "type": "token",
